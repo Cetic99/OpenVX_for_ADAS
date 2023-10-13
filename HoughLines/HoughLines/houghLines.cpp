@@ -108,7 +108,7 @@ int main(int argc, char** argv)
 {
 	// Declare the output variables
 	Mat dst, cdst;
-	const char* default_file = "../../../resources/images/working_image.png";
+	const char* default_file = "../../../../resources/images/working_image.png";
 	const char* filename = argc >= 2 ? argv[1] : default_file;
 	// Loads an image
 	Mat src_0 = imread(samples::findFile(filename), IMREAD_COLOR);
