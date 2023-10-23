@@ -1,0 +1,5 @@
+1. Prebaciti se u bin direktorijum
+2. pokrenuti: cmake -DOPENVX_INCLUDES=$OPENVX_DIR/include -DOPENVX_LIBRARIES=$OPENVX_DIR/lib/libopenvx.so ../
+3. pozvati make
+
+======== zakomentarisati liniju 31 za release build===================
