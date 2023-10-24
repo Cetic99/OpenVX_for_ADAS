@@ -49,24 +49,10 @@ enum user_library_e
 };
 enum user_kernel_e
 {
-    USER_KERNEL_HOUGH_TRANSFORM = VX_KERNEL_BASE(VX_ID_DEFAULT, USER_LIBRARY_EXAMPLE) + 0x001,
+    USER_KERNEL_HOUGH_TRANSFORM     = VX_KERNEL_BASE(VX_ID_DEFAULT, USER_LIBRARY_EXAMPLE) + 0x001,
+    USER_KERNEL_COLORING            = VX_KERNEL_BASE(VX_ID_DEFAULT, USER_LIBRARY_EXAMPLE) + 0x002,
 };
 
-////////
-// The node creation interface for the "app.userkernels.median_blur" kernel.
-// This user kernel example expects parameters in the following order:
-//   parameter #0  --  input image  of format VX_DF_IMAGE_U8
-//   parameter #1  --  output image of format VX_DF_IMAGE_U8
-//   parameter #2  --  scalar ksize of type   VX_TYPE_INT32
-//
-// TODO:********
-//   1. Use vxGetKernelByEnum API to get a kernel object from USER_KERNEL_MEDIAN_BLUR.
-//      Note that you need to use vxGetContext API to get the context from a graph object.
-//   2. Use vxCreateGenericNode API to create a node from the kernel object.
-//   3. Create scalar objects for ksize parameter.
-//   4. Use vxSetParameterByIndex API to set node arguments.
-//   5. Release the kernel and scalar objects that are not needed any more.
-//   6. Use ERROR_CHECK_OBJECT and ERROR_CHECK_STATUS macros for error detection.
 vx_node userHoughTransformNode(vx_graph graph,
                                vx_image input,
                                vx_array rects)
@@ -84,19 +70,6 @@ vx_node userHoughTransformNode(vx_graph graph,
 
     return node;
 }
-
-////////
-// The user kernel validator callback should check to make sure that all the input
-// parameters have correct data types and set meta format for the output parameters.
-// The input parameters to be validated are:
-//   parameter #0  --  input image  of format VX_DF_IMAGE_U8
-// The output parameters that requires setting meta format is:
-//   parameter #1  --  output image of format VX_DF_IMAGE_U8 with the same dimensions as input
-// TODO:********
-//   1. Check to make sure that the input image format is VX_DF_FORMAT_U8.
-//   2. Check to make sure that the scalar type is VX_TYPE_INT32.
-//   3. Query the input image for the image dimensions and set the output image
-//      meta data to have the same dimensions as input and VX_DF_FORMAT_U8.
 vx_status VX_CALLBACK hough_validator(vx_node node,
                                       const vx_reference parameters[], vx_uint32 num,
                                       vx_meta_format metas[])
@@ -119,19 +92,6 @@ vx_status VX_CALLBACK hough_validator(vx_node node,
     return VX_SUCCESS;
 }
 
-////////
-// User kernel host side function gets called to execute the user kernel node.
-// You need to wrap the OpenVX objects into OpenCV Mat objects and call cv::medianBlur.
-//
-// TODO:********
-//   1. Get ksize value from scalar object in refs[2].
-//   2. Access input and output image patches and wrap it in a cv::Mat object.
-//      Use the cv::Mat mat(width, height, CV_U8, ptr, addr.stride_y) to wrap
-//      an OpenVX image plane buffer in an OpenCV mat object. Note that
-//      you need to access input image with VX_READ_ONLY and output image
-//      with VX_WRITE_ONLY using vxMapImagePatch API.
-//   3. Just call cv::medianBlur(input, output, ksize)
-//   4. Use vxUnmapImagePatch API to give the image buffers control back to OpenVX framework
 vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference *refs, vx_uint32 num)
 {
     vx_image input = (vx_image)refs[0];
@@ -148,9 +108,6 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
     vx_imagepatch_addressing_t addr_input;
     void *ptr_input;
     ERROR_CHECK_STATUS(vxMapImagePatch(input, &rect, 0, &map_input, &addr_input, &ptr_input, VX_READ_ONLY, VX_MEMORY_TYPE_HOST, 0));
-
-    // vx_matrix accum = vxCreateMatrix(context,VX_TYPE_UINT16,NUM_THETAS,NUM_RHOS);
-    // ERROR_CHECK_OBJECT(accum);
 
     /********************************************
      * Creating accumulator
@@ -369,21 +326,110 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
     return VX_SUCCESS;
 }
 
-////////
-// User kernels needs to be registered with every OpenVX context before use in a graph.
-//
-// TODO:********
-//   1. Use vxAddUserKernel API to register "app.userkernels.median_blur" with
-//      kernel enumeration = USER_KERNEL_MEDIAN_BLUR, numParams = 3, and
-//      all of the user kernel callback functions you implemented above.
-//   2. Use vxAddParameterToKernel API to specify direction, data_type, and
-//      state of all 3 parameters to the kernel. Look into the comments of
-//      userMedianBlurNode function (above) to details about the order of
-//      kernel parameters and their types.
-//   3. Use vxFinalizeKernel API to make the kernel ready to use in a graph.
-//      Note that the kernel object is still valid after this call.
-//      So you need to call vxReleaseKernel before returning from this function.
-vx_status registerUserKernel(vx_context context)
+vx_node userColorNode(vx_graph graph,
+                               vx_image input,
+                               vx_array rects,
+                               vx_image output)
+{
+    vx_context context = vxGetContext((vx_reference)graph);
+    vx_kernel kernel = vxGetKernelByEnum(context, USER_KERNEL_COLORING);
+    ERROR_CHECK_OBJECT(kernel);
+    vx_node node = vxCreateGenericNode(graph, kernel);
+    ERROR_CHECK_OBJECT(node);
+
+    ERROR_CHECK_STATUS(vxSetParameterByIndex(node, 0, (vx_reference)input));
+    ERROR_CHECK_STATUS(vxSetParameterByIndex(node, 1, (vx_reference)rects));
+    ERROR_CHECK_STATUS(vxSetParameterByIndex(node, 2, (vx_reference)output));
+
+    ERROR_CHECK_STATUS(vxReleaseKernel(&kernel));
+
+    return node;
+}
+vx_status VX_CALLBACK colorNodeValidator(vx_node node,
+                                      const vx_reference parameters[], vx_uint32 num,
+                                      vx_meta_format metas[])
+{
+    // parameter #0 -- input image of format VX_DF_IMAGE_U8
+    vx_df_image format = VX_DF_IMAGE_VIRT;
+    vx_uint32 in_width,in_height;
+    ERROR_CHECK_STATUS(vxQueryImage((vx_image)parameters[0], VX_IMAGE_FORMAT, &format, sizeof(format)));
+    if (format != VX_DF_IMAGE_RGB)
+    {
+        return VX_ERROR_INVALID_FORMAT;
+    }
+    ERROR_CHECK_STATUS(vxQueryImage((vx_image)parameters[0], VX_IMAGE_WIDTH, &in_width, sizeof(in_width)));
+    ERROR_CHECK_STATUS(vxQueryImage((vx_image)parameters[0], VX_IMAGE_HEIGHT, &in_height, sizeof(in_height)));
+    // parameter #1 -- output array should be of itemtype VX_TYPE_COORDINATES2D
+    
+    format = VX_TYPE_COORDINATES2D;
+    ERROR_CHECK_STATUS(vxQueryArray((vx_array)parameters[1], VX_ARRAY_ITEMTYPE, &format, sizeof(format)));
+    if (format != VX_TYPE_COORDINATES2D)
+    {
+        return VX_ERROR_INVALID_FORMAT;
+    }
+    // parameter #2 -- output image should be VX_DF_IMAGE_RGB
+    format = VX_DF_IMAGE_RGB;
+    ERROR_CHECK_STATUS(vxSetMetaFormatAttribute(metas[2], VX_IMAGE_FORMAT, &format, sizeof(format)));
+    ERROR_CHECK_STATUS(vxSetMetaFormatAttribute(metas[2], VX_IMAGE_ATTRIBUTE_WIDTH, &in_width, sizeof(in_width)));
+    ERROR_CHECK_STATUS(vxSetMetaFormatAttribute(metas[2], VX_IMAGE_ATTRIBUTE_HEIGHT, &in_height, sizeof(in_height)));
+    return VX_SUCCESS;
+}
+
+vx_status VX_CALLBACK coloring_host_side_function(vx_node node, const vx_reference *refs, vx_uint32 num)
+{
+    vx_image input_img = (vx_image)refs[0];
+    vx_array coords_arr = (vx_array)refs[1];
+    vx_image output_img = (vx_image)refs[2];
+
+    void *in_ptr;
+    vx_uint32 width,height;
+    ERROR_CHECK_STATUS(vxQueryImage(input_img,VX_IMAGE_ATTRIBUTE_WIDTH,&width,sizeof(vx_uint32)));
+    ERROR_CHECK_STATUS(vxQueryImage(input_img,VX_IMAGE_ATTRIBUTE_HEIGHT,&height,sizeof(vx_uint32)));
+
+    vx_rectangle_t in_rect = {.start_x = 0, .start_y = 0, .end_x = width, .end_y = height };
+    vx_map_id in_map_id;
+    vx_imagepatch_addressing_t in_imgpatch;
+    ERROR_CHECK_STATUS(vxMapImagePatch(input_img, &in_rect, 0, &in_map_id, &in_imgpatch, &in_ptr,
+                                          VX_READ_ONLY, VX_MEMORY_TYPE_HOST, VX_NOGAP_X));
+
+    void *out_ptr;
+    vx_rectangle_t out_rect = {.start_x = 0, .start_y = 0, .end_x = width, .end_y = height };
+    vx_map_id out_map_id;
+    vx_imagepatch_addressing_t out_imgpatch;
+    ERROR_CHECK_STATUS(vxMapImagePatch(output_img, &out_rect, 0, &out_map_id, &out_imgpatch, &out_ptr,
+                                          VX_READ_ONLY, VX_MEMORY_TYPE_HOST, VX_NOGAP_X));
+
+    Mat mat(height, width, CV_8UC3, in_ptr, in_imgpatch.stride_y);
+
+    vx_coordinates2d_t * coords = NULL;
+    vx_map_id map_id;
+        vx_size num_items = -1;
+        vx_size stride;
+        vxQueryArray(coords_arr,VX_ARRAY_ATTRIBUTE_NUMITEMS,&num_items,sizeof(vx_size));
+        vxMapArrayRange(coords_arr,0,num_items,&map_id,&stride,(void**)&coords,VX_READ_ONLY,VX_MEMORY_TYPE_HOST,0);
+        for (vx_uint32 i = 0; i<num_items; i++) {
+            vx_int32 x0 = 400,x1 = 880, y0,y1;
+            vx_coordinates2d_t p = coords[i];
+            vx_float32 tann = tan(p.x * ((3.14) / (NUM_THETAS_LF)));
+            vx_float32 shifted = (vx_int32)p.y - NUM_RHOS_HALF;
+            vx_float32 coss =cos((vx_int32)p.x * 3.14 / (NUM_THETAS_LF));
+            y0 = x0 * tann + SCALING * (shifted / coss);
+            y1 = x1 * tann + SCALING * (shifted / coss);
+            line(mat, Point(y0, x0), Point(y1, x1), Scalar(0, 0, 255),3);
+        }
+        vxUnmapArrayRange(coords_arr,map_id);
+        vxTruncateArray(coords_arr,0);
+
+        
+        //Mat mat(height, width, CV_8U, ptr, addr.stride_y);
+        imshow("CannyDetect", mat);
+        ERROR_CHECK_STATUS(vxUnmapImagePatch(input_img, in_map_id));
+        ERROR_CHECK_STATUS(vxUnmapImagePatch(output_img, out_map_id));
+
+    return VX_SUCCESS;
+}
+
+vx_status registerUserKernels(vx_context context)
 {
     vx_kernel kernel = vxAddUserKernel(context,
                                        "app.userkernels.hough_transform",
@@ -401,6 +447,23 @@ vx_status registerUserKernel(vx_context context)
     ERROR_CHECK_STATUS(vxReleaseKernel(&kernel));
 
     vxAddLogEntry((vx_reference)context, VX_SUCCESS, "OK: registered user kernel app.userkernels.hough_transform\n");
+
+    kernel = vxAddUserKernel(context,
+                                       "app.userkernels.coloring",
+                                       USER_KERNEL_COLORING,
+                                       coloring_host_side_function,
+                                       3, // numParams
+                                       colorNodeValidator,
+                                       NULL,
+                                       NULL);
+    ERROR_CHECK_OBJECT(kernel);
+
+    ERROR_CHECK_STATUS(vxAddParameterToKernel(kernel, 0, VX_INPUT, VX_TYPE_IMAGE, VX_PARAMETER_STATE_REQUIRED));  // input
+    ERROR_CHECK_STATUS(vxAddParameterToKernel(kernel, 1, VX_INPUT, VX_TYPE_ARRAY, VX_PARAMETER_STATE_REQUIRED)); // input
+    ERROR_CHECK_STATUS(vxAddParameterToKernel(kernel, 2, VX_OUTPUT, VX_TYPE_IMAGE, VX_PARAMETER_STATE_REQUIRED));  // output
+    ERROR_CHECK_STATUS(vxFinalizeKernel(kernel));
+    ERROR_CHECK_STATUS(vxReleaseKernel(&kernel));
+
     return VX_SUCCESS;
 }
 
@@ -437,14 +500,14 @@ int main(int argc, char **argv)
     //
     // TODO:********
     //   1. Register user kernel with context by calling your implementation of "registerUserKernel()".
-    ERROR_CHECK_STATUS(registerUserKernel(context));
+    ERROR_CHECK_STATUS(registerUserKernels(context));
 
     vx_graph graph = vxCreateGraph(context);
     ERROR_CHECK_OBJECT(graph);
 
     // context data
     vx_image input_rgb_image = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
-    vx_image output_filtered_image = vxCreateImage(context, width, height, VX_DF_IMAGE_U8);
+    vx_image output_filtered_image = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
     ERROR_CHECK_OBJECT(input_rgb_image);
     ERROR_CHECK_OBJECT(output_filtered_image);
 
@@ -483,7 +546,9 @@ int main(int argc, char **argv)
             vxChannelExtractNode(graph, yuv_image, VX_CHANNEL_Y, luma_image),
             vxGaussian3x3Node(graph, luma_image, blured_image[0]),
             vxCannyEdgeDetectorNode(graph, blured_image[0], hyst, gradient_size, VX_NORM_L1, edged_image),
-            userHoughTransformNode(graph, edged_image, lines_user)};
+            userHoughTransformNode(graph, edged_image, lines_user),
+            userColorNode(graph,input_rgb_image,lines_user,output_filtered_image)
+        };
 
     for (vx_size i = 0; i < sizeof(nodes) / sizeof(nodes[0]); i++)
     {
@@ -529,29 +594,6 @@ int main(int argc, char **argv)
         vx_map_id map_id;
         vx_imagepatch_addressing_t addr;
 
-        /***********************************************************************
-         * Drawing lines
-         * *********************************************************************/
-        vx_coordinates2d_t * coords = NULL;
-        vx_size num_items = -1;
-        vx_size stride;
-        vxQueryArray(lines_user,VX_ARRAY_ATTRIBUTE_NUMITEMS,&num_items,sizeof(vx_size));
-        vxMapArrayRange(lines_user,0,num_items,&map_id,&stride,(void**)&coords,VX_READ_ONLY,VX_MEMORY_TYPE_HOST,0);
-        for (vx_uint32 i = 0; i<num_items; i++) {
-            vx_int32 x0 = 500,x1 = 880, y0,y1;
-            vx_coordinates2d_t p = coords[i];
-            vx_float32 tann = tan(p.x * ((3.14) / (NUM_THETAS_LF)));
-            vx_float32 shifted = (vx_int32)p.y - NUM_RHOS_HALF;
-            vx_float32 coss =cos((vx_int32)p.x * 3.14 / (NUM_THETAS_LF));
-            y0 = x0 * tann + SCALING * (shifted / coss);
-            y1 = x1 * tann + SCALING * (shifted / coss);
-            line(input, Point(y0, x0), Point(y1, x1), Scalar(0, 0, 255),3);
-            cout << "Point0(x=" << x0 << ",y=" << y0 << ")" << endl;
-            cout << "Point1(x=" << x1 << ",y=" << y1 << ")" << endl;
-        }
-        vxUnmapArrayRange(lines_user,map_id);
-        vxTruncateArray(lines_user,0);
-        imshow("lined",input);
         /***********************************************************************/
         vx_perf_t perfHough = { 0 };
         ERROR_CHECK_STATUS( vxQueryGraph( graph, VX_GRAPH_PERFORMANCE, &perfHough, sizeof( perfHough ) ) );
@@ -601,31 +643,6 @@ int main(int argc, char **argv)
             vx_rectangle_t rect = {0, 0, (vx_uint32)width, (vx_uint32)height};
             vx_map_id map_id;
             vx_imagepatch_addressing_t addr;
-
-
-            /***********************************************************************
-         * Drawing lines
-         * *********************************************************************/
-        vx_coordinates2d_t * coords = NULL;
-        vx_size num_items = -1;
-        vx_size stride;
-        vxQueryArray(lines_user,VX_ARRAY_ATTRIBUTE_NUMITEMS,&num_items,sizeof(vx_size));
-        vxMapArrayRange(lines_user,0,num_items,&map_id,&stride,(void**)&coords,VX_READ_ONLY,VX_MEMORY_TYPE_HOST,0);
-        for (vx_uint32 i = 0; i<num_items; i++) {
-            vx_int32 x0 = 400,x1 = 880, y0,y1;
-            vx_coordinates2d_t p = coords[i];
-            vx_float32 tann = tan(p.x * ((3.14) / (NUM_THETAS_LF)));
-            vx_float32 shifted = (vx_int32)p.y - NUM_RHOS_HALF;
-            vx_float32 coss =cos((vx_int32)p.x * 3.14 / (NUM_THETAS_LF));
-            y0 = x0 * tann + SCALING * (shifted / coss);
-            y1 = x1 * tann + SCALING * (shifted / coss);
-            line(input, Point(y0, x0), Point(y1, x1), Scalar(0, 0, 255),3);
-            //cout << "Point0(x=" << x0 << ",y=" << y0 << ")" << endl;
-            //cout << "Point1(x=" << x1 << ",y=" << y1 << ")" << endl;
-        }
-        vxUnmapArrayRange(lines_user,map_id);
-        vxTruncateArray(lines_user,0);
-        imshow("lined",input);
 
         vx_perf_t perfHough = { 0 };
         ERROR_CHECK_STATUS( vxQueryGraph( graph, VX_GRAPH_PERFORMANCE, &perfHough, sizeof( perfHough ) ) );
