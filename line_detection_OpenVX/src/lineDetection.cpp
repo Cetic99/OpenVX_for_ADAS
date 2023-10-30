@@ -108,7 +108,40 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
     vx_map_id map_input;
     vx_imagepatch_addressing_t addr_input;
     void *ptr_input;
-    ERROR_CHECK_STATUS(vxMapImagePatch(input, &rect, 0, &map_input, &addr_input, &ptr_input, VX_READ_ONLY, VX_MEMORY_TYPE_HOST, 0));
+    ERROR_CHECK_STATUS(vxMapImagePatch(input, &rect, 0, &map_input, &addr_input, &ptr_input, VX_READ_AND_WRITE, VX_MEMORY_TYPE_HOST, 0));
+
+
+     /******************************************
+     * Making mask
+     * ****************************************/
+
+    vx_rectangle_t line0 = {.start_x = 0,.start_y = width/5,.end_x = height-20,.end_y = 0};
+    vx_float32 k0 = ((vx_float32)line0.end_y-(vx_float32)line0.start_y)/((vx_float32)line0.end_x-(vx_float32)line0.start_x);
+    vx_float32 n0 = (vx_int32)line0.start_y - k0*(vx_int32)line0.start_x;
+
+    vx_rectangle_t line1 = {.start_x = 0,.start_y = 4*width/5,.end_x = height-20,.end_y = width};
+    vx_float32 k1 = ((vx_float32)line1.end_y-(vx_float32)line1.start_y)/((vx_float32)line1.end_x-(vx_float32)line1.start_x);
+    vx_float32 n1 = (vx_int32)line1.start_y - k1*(vx_int32)line1.start_x;
+    vx_int32 curr_xx = line1.start_x;
+    vx_int32 curr_yy0;
+    vx_int32 curr_yy1;
+    for(vx_size i = 0; i < height; i++){
+        bool switched = vx_false_e;
+        vx_uint8 state = 0;
+        curr_yy0 = k0*i + n0;
+        curr_yy1 = k1*i + n1;
+        for(vx_size j = 0;j < width; j++){
+            if(j == curr_yy0 || j == curr_yy1){
+                switched = !switched;
+            }
+            if(switched == vx_false_e){
+                vx_uint8 * pxl = (vx_uint8*)vxFormatImagePatchAddress2d(ptr_input,j,i,&addr_input);
+                *pxl = state;
+            }
+            
+            
+        }
+    }
 
     Mat mat(height, width, CV_8UC1, ptr_input, addr_input.stride_y);
     imshow("edged",mat);
@@ -193,13 +226,13 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
                 vx_int16 *pxl_rght = (vx_int16*)vxFormatImagePatchAddress2d(base_ptr,j,i+NUM_THETAS_HALF,&addr);
                 vx_float32 theta1 = i * CV_PI / NUM_THETAS_LF;
                 vx_float32 theta2 = (i+NUM_THETAS_HALF) * CV_PI / NUM_THETAS_LF;
-                if (*pxl_lft > left_max && sin(theta1) < 0.9) {
+                if (*pxl_lft > left_max && sin(theta1) < 0.8) {
                         left_max = *pxl_lft;
                         left_coord.x = i;
                         left_coord.y = j;
                         left = vx_true_e;
                 }
-                if (*pxl_rght > right_max && sin(theta2) < 0.9) {
+                if (*pxl_rght > right_max && sin(theta2) < 0.8) {
                         right_max = *pxl_rght;
                         right_coord.x = i+NUM_THETAS_HALF;
                         right_coord.y = j;
@@ -515,47 +548,50 @@ int main(int argc, char **argv)
     ERROR_CHECK_OBJECT(graph);
 
     // context data
-    vx_image input_rgb_image = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
-    vx_image output_filtered_image = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
+    vx_image input_rgb_image        = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
+    vx_image output_filtered_image  = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
     ERROR_CHECK_OBJECT(input_rgb_image);
     ERROR_CHECK_OBJECT(output_filtered_image);
-
-    // virtual images creation
-    vx_image yuv_image = vxCreateVirtualImage(graph, width, height, VX_DF_IMAGE_IYUV);
-    vx_image luma_image = vxCreateVirtualImage(graph, width, height, VX_DF_IMAGE_U8);
-    
-    vx_size num_blures = 1;
-    vx_image blured_image[num_blures];
-    for (vx_size i = 0; i < num_blures; i++)
-    {
-        blured_image[i] = vxCreateVirtualImage(graph, width, height, VX_DF_IMAGE_U8);
-    }
-    vx_image edged_image = vxCreateVirtualImage(graph, width, height, VX_DF_IMAGE_U8);
 
     /*****************************************
      * Working ROI
      * ***************************************
     */
-    vx_rectangle_t roi_rect = {.start_x = 450, .start_y = 330, .end_x=width-540, .end_y=height-200};
+    vx_rectangle_t roi_rect = {.start_x = 350, .start_y = 350, .end_x=width-450, .end_y=height-200};
+    //vx_rectangle_t roi_rect = {.start_x = 0, .start_y = 350, .end_x=width, .end_y=height};
+    vx_uint32 roi_width = roi_rect.end_x - roi_rect.start_x;
+    vx_uint32 roi_height = roi_rect.end_y - roi_rect.start_y;
+
+    //vx_image roied_image_roi = vxCreateImageFromROI(edged_image,&roi_rect);
     /*****************************************/
-    vx_image edged_image_roi = vxCreateImageFromROI(edged_image,&roi_rect);
+    // virtual images creation
+    vx_image yuv_image      = vxCreateVirtualImage(graph, width, height, VX_DF_IMAGE_IYUV);
+    vx_image luma_image     = vxCreateVirtualImage(graph, width, height, VX_DF_IMAGE_U8);
+    vx_image gray_roi       = vxCreateImageFromROI(luma_image,&roi_rect);
+    vx_image blured_image[2];
+    for(vx_size i = 0; i<2;i++){
+        blured_image[i]     = vxCreateVirtualImage(graph, roi_width, roi_height, VX_DF_IMAGE_U8);
+        ERROR_CHECK_OBJECT(blured_image[i]);
+    }
+    vx_image edged_image    = vxCreateVirtualImage(graph, roi_width, roi_height, VX_DF_IMAGE_U8);
+
 
 
     ERROR_CHECK_OBJECT(yuv_image);
     ERROR_CHECK_OBJECT(luma_image);
     ERROR_CHECK_OBJECT(edged_image);
-    ERROR_CHECK_OBJECT(edged_image_roi);
+    //ERROR_CHECK_OBJECT(roied_image_roi);
 
     vx_threshold hyst = vxCreateThreshold(context, VX_THRESHOLD_TYPE_RANGE, VX_TYPE_UINT8);
-    vx_int32 lower = 150, upper = 200;
+    vx_int32 lower = 180, upper = 200;
     vxSetThresholdAttribute(hyst, VX_THRESHOLD_ATTRIBUTE_THRESHOLD_LOWER, &lower, sizeof(lower));
     vxSetThresholdAttribute(hyst, VX_THRESHOLD_ATTRIBUTE_THRESHOLD_UPPER, &upper, sizeof(upper));
     ERROR_CHECK_OBJECT(hyst);
     vx_int32 gradient_size = 3;
-    vx_int32 maxcount = 200;
-    vx_array lines = vxCreateArray(context, VX_TYPE_RECTANGLE, maxcount);
-    vx_int32 count_var = 0;
-    vx_scalar count = vxCreateScalar(context, VX_TYPE_INT32, &count_var);
+     vx_int32 maxcount = 2;
+    // vx_array lines = vxCreateArray(context, VX_TYPE_RECTANGLE, maxcount);
+    // vx_int32 count_var = 0;
+    // vx_scalar count = vxCreateScalar(context, VX_TYPE_INT32, &count_var);
     /*user*/
     vx_array lines_user = vxCreateArray(context, VX_TYPE_COORDINATES2D, maxcount);
     
@@ -565,9 +601,11 @@ int main(int argc, char **argv)
         {
             vxColorConvertNode(graph, input_rgb_image, yuv_image),
             vxChannelExtractNode(graph, yuv_image, VX_CHANNEL_Y, luma_image),
-            vxGaussian3x3Node(graph, luma_image, blured_image[0]),
-            vxCannyEdgeDetectorNode(graph, blured_image[0], hyst, gradient_size, VX_NORM_L1, edged_image),
-            userHoughTransformNode(graph, edged_image_roi, lines_user),
+            vxGaussian3x3Node(graph, gray_roi, blured_image[0]),
+            vxGaussian3x3Node(graph, blured_image[0], blured_image[1]),
+            //vxGaussian3x3Node(graph, blured_image[1], blured_image[2]),
+            vxCannyEdgeDetectorNode(graph, blured_image[1], hyst, gradient_size, VX_NORM_L1, edged_image),
+            userHoughTransformNode(graph, edged_image, lines_user),
             userColorNode(graph,input_rgb_image,lines_user,output_filtered_image,roi_rect)
         };
 
@@ -627,17 +665,11 @@ int main(int argc, char **argv)
             "Hough    %9d %7.3f %7.3f\n",
             ( int )perfHough.num, ( float )perfHough.avg * 1e-6f, ( float )perfHough.min * 1e-6f);
 
-        //void *ptr;
-        //ERROR_CHECK_STATUS(vxMapImagePatch(output_filtered_image, &rect, 0, &map_id, &addr, &ptr,
-        //                                   VX_READ_ONLY, VX_MEMORY_TYPE_HOST, VX_NOGAP_X));
-        //Mat mat(height, width, CV_8U, ptr, addr.stride_y);
-        //imshow("CannyDetect", mat);
         waitKey(0);
-        //ERROR_CHECK_STATUS(vxUnmapImagePatch(output_filtered_image, map_id));
     }
     else if (option == "--live")
     {
-        VideoCapture cap("../../working_video.mp4");
+        VideoCapture cap("../../dashcam1.mp4");
         if (!cap.isOpened())
         {
             printf("Unable to open camera\n");
