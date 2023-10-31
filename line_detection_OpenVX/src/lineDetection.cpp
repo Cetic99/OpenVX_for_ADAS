@@ -5,16 +5,18 @@
 #include <VX/vx_intel_volatile.h>
 #include <VX/vx_types.h>
 #include <VX/vxu.h>
+#include "readImage.h"
+#include "writeImage.h"
 
 using namespace cv;
 using namespace std;
 
-#define NUM_THETAS      (800)
-#define NUM_THETAS_HALF (400)
-#define NUM_THETAS_LF   (800.0)
-#define NUM_RHOS        (800)
-#define NUM_RHOS_HALF   (400)
-#define SCALING         (16.0)
+#define NUM_THETAS      (200)
+#define NUM_THETAS_HALF (100)
+#define NUM_THETAS_LF   (200.0)
+#define NUM_RHOS        (200)
+#define NUM_RHOS_HALF   (100)
+#define SCALING         (8.0)
 
 #define ERROR_CHECK_STATUS(status)                                                              \
     {                                                                                           \
@@ -143,8 +145,8 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
         }
     }
 
-    Mat mat(height, width, CV_8UC1, ptr_input, addr_input.stride_y);
-    imshow("edged",mat);
+    // Mat mat(height, width, CV_8UC1, ptr_input, addr_input.stride_y);
+    // imshow("edged",mat);
 
     /********************************************
      * Creating accumulator
@@ -344,23 +346,23 @@ void move_diagonally(void* red_ptr,vx_imagepatch_addressing_t *red_addr,void* gr
             vx_uint8 *green_pxl = (vx_uint8*)vxFormatImagePatchAddress2d(green_ptr,curr_yy,curr_xx,green_addr);
             vx_uint8 *blue_pxl = (vx_uint8*)vxFormatImagePatchAddress2d(blue_ptr,curr_yy,curr_xx,blue_addr);
 
-            *red_pxl=0;
+            *red_pxl=255;
             *green_pxl=0;
-            *blue_pxl=255;
+            *blue_pxl=0;
 
             red_pxl = (vx_uint8*)vxFormatImagePatchAddress2d(red_ptr,curr_yy-1,curr_xx,red_addr);
             green_pxl = (vx_uint8*)vxFormatImagePatchAddress2d(green_ptr,curr_yy-1,curr_xx,green_addr);
             blue_pxl = (vx_uint8*)vxFormatImagePatchAddress2d(blue_ptr,curr_yy-1,curr_xx,blue_addr);
-            *red_pxl=0;
+            *red_pxl=255;
             *green_pxl=0;
-            *blue_pxl=255;
+            *blue_pxl=0;
 
             red_pxl = (vx_uint8*)vxFormatImagePatchAddress2d(red_ptr,curr_yy-2,curr_xx,red_addr);
             green_pxl = (vx_uint8*)vxFormatImagePatchAddress2d(green_ptr,curr_yy-2,curr_xx,green_addr);
             blue_pxl = (vx_uint8*)vxFormatImagePatchAddress2d(blue_ptr,curr_yy-2,curr_xx,blue_addr);
-            *red_pxl=0;
+            *red_pxl=255;
             *green_pxl=0;
-            *blue_pxl=255;
+            *blue_pxl=0;
             //image.at<uchar>(curr_xx,curr_yy) = 255;
         }
             //line(image,Point(y0,x0),Point(y1,x1),Scalar(255));
@@ -539,6 +541,7 @@ int main(int argc, char **argv)
     vx_uint32 width = 1280, height = 720;
 
     vx_context context = vxCreateContext();
+    
     ERROR_CHECK_OBJECT(context);
     vxRegisterLogCallback(context, log_callback, vx_false_e);
 
@@ -549,15 +552,23 @@ int main(int argc, char **argv)
 
     // context data
     vx_image input_rgb_image        = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
+
+    /**************************************
+     * Reading image from file
+     * ************************************/
+    //  struct read_image_attributes attr;
+    //  vx_image input_rgb_image = createImageFromFile(context, argv[2], &attr);
+    //  ERROR_CHECK_OBJECT(input_rgb_image);
+    //  width = attr.width;
+    //  height = attr.height;
     vx_image output_filtered_image  = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
-    ERROR_CHECK_OBJECT(input_rgb_image);
     ERROR_CHECK_OBJECT(output_filtered_image);
 
     /*****************************************
      * Working ROI
      * ***************************************
     */
-    vx_rectangle_t roi_rect = {.start_x = 350, .start_y = 350, .end_x=width-450, .end_y=height-200};
+    vx_rectangle_t roi_rect = {.start_x = 350, .start_y = 350, .end_x=width-450, .end_y=height-230};
     //vx_rectangle_t roi_rect = {.start_x = 0, .start_y = 350, .end_x=width, .end_y=height};
     vx_uint32 roi_width = roi_rect.end_x - roi_rect.start_x;
     vx_uint32 roi_height = roi_rect.end_y - roi_rect.start_y;
@@ -589,9 +600,6 @@ int main(int argc, char **argv)
     ERROR_CHECK_OBJECT(hyst);
     vx_int32 gradient_size = 3;
      vx_int32 maxcount = 2;
-    // vx_array lines = vxCreateArray(context, VX_TYPE_RECTANGLE, maxcount);
-    // vx_int32 count_var = 0;
-    // vx_scalar count = vxCreateScalar(context, VX_TYPE_INT32, &count_var);
     /*user*/
     vx_array lines_user = vxCreateArray(context, VX_TYPE_COORDINATES2D, maxcount);
     
@@ -603,7 +611,6 @@ int main(int argc, char **argv)
             vxChannelExtractNode(graph, yuv_image, VX_CHANNEL_Y, luma_image),
             vxGaussian3x3Node(graph, gray_roi, blured_image[0]),
             vxGaussian3x3Node(graph, blured_image[0], blured_image[1]),
-            //vxGaussian3x3Node(graph, blured_image[1], blured_image[2]),
             vxCannyEdgeDetectorNode(graph, blured_image[1], hyst, gradient_size, VX_NORM_L1, edged_image),
             userHoughTransformNode(graph, edged_image, lines_user),
             userColorNode(graph,input_rgb_image,lines_user,output_filtered_image,roi_rect)
@@ -621,15 +628,15 @@ int main(int argc, char **argv)
 
     if (option == "--image")
     {
-        string imageLocation = argv[2];
-        input = imread(imageLocation.c_str());
-        if (input.empty())
-        {
-            printf("Image not found\n");
-            return 0;
-        }
-        resize(input, input, Size(width, height));
-        imshow("inputWindow", input);
+        //string imageLocation = argv[2];
+        //input = imread(imageLocation.c_str());
+        // if (input.empty())
+        // {
+        //     printf("Image not found\n");
+        //     return 0;
+        // }
+        //resize(input, input, Size(width, height));
+        //imshow("inputWindow", input);
         vx_rectangle_t cv_rgb_image_region;
         cv_rgb_image_region.start_x = 0;
         cv_rgb_image_region.start_y = 0;
@@ -641,23 +648,27 @@ int main(int argc, char **argv)
         cv_rgb_image_layout.stride_x = input.elemSize();
         cv_rgb_image_layout.stride_y = input.step;
         vx_uint8 *cv_rgb_image_buffer = input.data;
-        ERROR_CHECK_STATUS(vxCopyImagePatch(input_rgb_image, &cv_rgb_image_region, 0,
-                                            &cv_rgb_image_layout, cv_rgb_image_buffer,
-                                            VX_WRITE_ONLY, VX_MEMORY_TYPE_HOST));
+        // ERROR_CHECK_STATUS(vxCopyImagePatch(input_rgb_image, &cv_rgb_image_region, 0,
+        //                                     &cv_rgb_image_layout, cv_rgb_image_buffer,
+        //                                     VX_WRITE_ONLY, VX_MEMORY_TYPE_HOST));
         ERROR_CHECK_STATUS(vxProcessGraph(graph));
 
         
 
 
-        vx_rectangle_t rect = {0, 0, (vx_uint32)width, (vx_uint32)height};
-        vx_map_id map_id;
-        vx_imagepatch_addressing_t addr;
-        void* base_ptr = NULL;
-            vxMapImagePatch(output_filtered_image,&rect,0,&map_id,&addr,&base_ptr,VX_READ_ONLY,VX_MEMORY_TYPE_HOST,0);
-            Mat mat(height, width, CV_8UC3, base_ptr, addr.stride_y);
-            imshow("output", mat);
-            vxUnmapImagePatch(output_filtered_image,map_id);
+        // vx_rectangle_t rect = {0, 0, (vx_uint32)width, (vx_uint32)height};
+        // vx_map_id map_id;
+        // vx_imagepatch_addressing_t addr;
+        // void* base_ptr = NULL;
+        //     vxMapImagePatch(output_filtered_image,&rect,0,&map_id,&addr,&base_ptr,VX_READ_ONLY,VX_MEMORY_TYPE_HOST,0);
+        //     Mat mat(height, width, CV_8UC3, base_ptr, addr.stride_y);
+        //     imshow("output", mat);
+        //     vxUnmapImagePatch(output_filtered_image,map_id);
 
+        /*****************************************************
+         * Writing image to file
+         * ***************************************************/
+        writeImage(output_filtered_image,"finished.ppm");
         /***********************************************************************/
         vx_perf_t perfHough = { 0 };
         ERROR_CHECK_STATUS( vxQueryGraph( graph, VX_GRAPH_PERFORMANCE, &perfHough, sizeof( perfHough ) ) );
@@ -730,11 +741,11 @@ int main(int argc, char **argv)
                 "Line detection    %9d %7.3f %7.3f\n",
                 ( int )perfHough.num, ( float )perfHough.avg * 1e-6f, ( float )perfHough.min * 1e-6f);
 
+    ERROR_CHECK_STATUS(vxReleaseImage(&output_filtered_image));
+    ERROR_CHECK_STATUS(vxReleaseImage(&input_rgb_image));
     ERROR_CHECK_STATUS(vxReleaseGraph(&graph));
     ERROR_CHECK_STATUS(vxReleaseImage(&yuv_image));
     ERROR_CHECK_STATUS(vxReleaseImage(&luma_image));
-    ERROR_CHECK_STATUS(vxReleaseImage(&input_rgb_image));
-    ERROR_CHECK_STATUS(vxReleaseImage(&output_filtered_image));
     ERROR_CHECK_STATUS(vxReleaseContext(&context));
     return 0;
 }
