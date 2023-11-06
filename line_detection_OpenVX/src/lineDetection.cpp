@@ -5,6 +5,7 @@
 #include <VX/vx_intel_volatile.h>
 #include <VX/vx_types.h>
 #include <VX/vxu.h>
+#include <time.h>
 #include "readImage.h"
 #include "writeImage.h"
 
@@ -99,6 +100,7 @@ vx_status VX_CALLBACK hough_validator(vx_node node,
     }
     return VX_SUCCESS;
 }
+
 
 vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference *refs, vx_uint32 num)
 {
@@ -226,6 +228,7 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
             }
         }
     }
+
 
     vx_int32 left_max = 0, right_max = 0;
     vx_coordinates2d_t left_coord, right_coord;
@@ -547,16 +550,16 @@ int main(int argc, char **argv)
     ERROR_CHECK_OBJECT(graph);
 
     // context data
-    vx_image input_rgb_image = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
+    //vx_image input_rgb_image = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
 
     /**************************************
      * Reading image from file
      * ************************************/
-    //  struct read_image_attributes attr;
-    //  vx_image input_rgb_image = createImageFromFile(context, argv[2], &attr);
-    //  ERROR_CHECK_OBJECT(input_rgb_image);
-    //  width = attr.width;
-    //  height = attr.height;
+     struct read_image_attributes attr;
+     vx_image input_rgb_image = createImageFromFile(context, argv[2], &attr);
+     ERROR_CHECK_OBJECT(input_rgb_image);
+     width = attr.width;
+     height = attr.height;
     vx_image output_filtered_image = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
     ERROR_CHECK_OBJECT(output_filtered_image);
 
@@ -569,7 +572,6 @@ int main(int argc, char **argv)
     vx_uint32 roi_width = roi_rect.end_x - roi_rect.start_x;
     vx_uint32 roi_height = roi_rect.end_y - roi_rect.start_y;
 
-    // vx_image roied_image_roi = vxCreateImageFromROI(edged_image,&roi_rect);
     /*****************************************/
     // virtual images creation
     vx_image yuv_image = vxCreateVirtualImage(graph, width, height, VX_DF_IMAGE_IYUV);
@@ -618,52 +620,22 @@ int main(int argc, char **argv)
     string option = argv[1];
     Mat input;
 
+    clock_t begin,end;
+    double time_spent;
     if (option == "--image")
     {
-        // string imageLocation = argv[2];
-        // input = imread(imageLocation.c_str());
-        //  if (input.empty())
-        //  {
-        //      printf("Image not found\n");
-        //      return 0;
-        //  }
-        // resize(input, input, Size(width, height));
-        // imshow("inputWindow", input);
-        vx_rectangle_t cv_rgb_image_region;
-        cv_rgb_image_region.start_x = 0;
-        cv_rgb_image_region.start_y = 0;
-        cv_rgb_image_region.end_x = width;
-        cv_rgb_image_region.end_y = height;
-        vx_imagepatch_addressing_t cv_rgb_image_layout{};
-        cv_rgb_image_layout.dim_x = input.cols;
-        cv_rgb_image_layout.dim_y = input.rows;
-        cv_rgb_image_layout.stride_x = input.elemSize();
-        cv_rgb_image_layout.stride_y = input.step;
-        vx_uint8 *cv_rgb_image_buffer = input.data;
-        // ERROR_CHECK_STATUS(vxCopyImagePatch(input_rgb_image, &cv_rgb_image_region, 0,
-        //                                     &cv_rgb_image_layout, cv_rgb_image_buffer,
-        //                                     VX_WRITE_ONLY, VX_MEMORY_TYPE_HOST));
+        begin = clock();
+
         ERROR_CHECK_STATUS(vxProcessGraph(graph));
 
-        // vx_rectangle_t rect = {0, 0, (vx_uint32)width, (vx_uint32)height};
-        // vx_map_id map_id;
-        // vx_imagepatch_addressing_t addr;
-        // void* base_ptr = NULL;
-        //     vxMapImagePatch(output_filtered_image,&rect,0,&map_id,&addr,&base_ptr,VX_READ_ONLY,VX_MEMORY_TYPE_HOST,0);
-        //     Mat mat(height, width, CV_8UC3, base_ptr, addr.stride_y);
-        //     imshow("output", mat);
-        //     vxUnmapImagePatch(output_filtered_image,map_id);
-
+        end = clock();
+        double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
         /*****************************************************
          * Writing image to file
          * ***************************************************/
+        
         writeImage(output_filtered_image, "finished.ppm");
         /***********************************************************************/
-        vx_perf_t perfHough = {0};
-        ERROR_CHECK_STATUS(vxQueryGraph(graph, VX_GRAPH_PERFORMANCE, &perfHough, sizeof(perfHough)));
-        printf("GraphName NumFrames Avg(ms) Min(ms)\n"
-               "Hough    %9d %7.3f %7.3f\n",
-               (int)perfHough.num, (float)perfHough.avg * 1e-6f, (float)perfHough.min * 1e-6f);
 
         waitKey(0);
     }
@@ -677,6 +649,7 @@ int main(int argc, char **argv)
         }
         for (;;)
         {
+            clock_t begin = clock();
             cap >> input;
             resize(input, input, Size(width, height));
             // imshow("inputWindow", input);
@@ -707,11 +680,11 @@ int main(int argc, char **argv)
             imshow("output", mat);
             vxUnmapImagePatch(output_filtered_image, map_id);
 
-            // imshow( "CannyDetect", mat );
-            // imshow("inputWindow", input);
+            end = clock();
+            time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+
             if (waitKey(30) >= 0)
                 break;
-            // ERROR_CHECK_STATUS(vxUnmapImagePatch(output_filtered_image, map_id));
         }
     }
     else
@@ -721,13 +694,7 @@ int main(int argc, char **argv)
                "./cannyDetect --live \n");
         return 0;
     }
-
-    vx_perf_t perfHough = {0};
-    ERROR_CHECK_STATUS(vxQueryGraph(graph, VX_GRAPH_PERFORMANCE, &perfHough, sizeof(perfHough)));
-    printf("GraphName NumFrames Avg(ms) Min(ms)\n"
-           "Line detection    %9d %7.3f %7.3f\n",
-           (int)perfHough.num, (float)perfHough.avg * 1e-6f, (float)perfHough.min * 1e-6f);
-
+    printf("FPS=%f\n",1.0/time_spent);
     ERROR_CHECK_STATUS(vxReleaseImage(&output_filtered_image));
     ERROR_CHECK_STATUS(vxReleaseImage(&input_rgb_image));
     ERROR_CHECK_STATUS(vxReleaseGraph(&graph));
