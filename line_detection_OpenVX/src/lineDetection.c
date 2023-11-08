@@ -1,16 +1,82 @@
+/*
+ *
+ * Copyright (c) 2017 Texas Instruments Incorporated
+ *
+ * All rights reserved not granted herein.
+ *
+ * Limited License.
+ *
+ * Texas Instruments Incorporated grants a world-wide, royalty-free, non-exclusive
+ * license under copyrights and patents it now or hereafter owns or controls to make,
+ * have made, use, import, offer to sell and sell ("Utilize") this software subject to the
+ * terms herein.  With respect to the foregoing patent license, such license is granted
+ * solely to the extent that any such patent is necessary to Utilize the software alone.
+ * The patent license shall not apply to any combinations which include this software,
+ * other than combinations with devices manufactured by or for TI ("TI Devices").
+ * No hardware patent is licensed hereunder.
+ *
+ * Redistributions must preserve existing copyright notices and reproduce this license
+ * (including the above copyright notice and the disclaimer and (if applicable) source
+ * code license limitations below) in the documentation and/or other materials provided
+ * with the distribution
+ *
+ * Redistribution and use in binary form, without modification, are permitted provided
+ * that the following conditions are met:
+ *
+ * *       No reverse engineering, decompilation, or disassembly of this software is
+ * permitted with respect to any software provided in binary form.
+ *
+ * *       any redistribution and use are licensed by TI for use only with TI Devices.
+ *
+ * *       Nothing shall obligate TI to provide you with source code for the software
+ * licensed and provided to you in object code.
+ *
+ * If software source code is provided to you, modification and redistribution of the
+ * source code are permitted provided that the following conditions are met:
+ *
+ * *       any redistribution and use of the source code, including any resulting derivative
+ * works, are licensed by TI for use only with TI Devices.
+ *
+ * *       any redistribution and use of any object code compiled from the source code
+ * and any resulting derivative works, are licensed by TI for use only with TI Devices.
+ *
+ * Neither the name of Texas Instruments Incorporated nor the names of its suppliers
+ *
+ * may be used to endorse or promote products derived from this software without
+ * specific prior written permission.
+ *
+ * DISCLAIMER.
+ *
+ * THIS SOFTWARE IS PROVIDED BY TI AND TI'S LICENSORS "AS IS" AND ANY EXPRESS
+ * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL TI AND TI'S LICENSORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+ * OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ */
+
+#include <stdio.h>
+#include <string.h>
+#include <assert.h>
+#include <stdint.h>
+#include <TI/tivx.h>
+#include <app_init.h>
+#include <stdlib.h>
+#include <time.h>
+
 #include <VX/vx.h>
 #include <VX/vx_compatibility.h>
-#include "opencv2/opencv.hpp"
-#include <string>
-#include <VX/vx_intel_volatile.h>
 #include <VX/vx_types.h>
 #include <VX/vxu.h>
-#include <time.h>
-#include "readImage.h"
-#include "writeImage.h"
-
-using namespace cv;
-using namespace std;
+#include <VX/vx_nodes.h>
+#include "src/readImage.h"
+#include "src/writeImage.h"
+#include <math.h>
 
 #define NUM_THETAS (200)
 #define NUM_THETAS_HALF (100)
@@ -18,6 +84,8 @@ using namespace std;
 #define NUM_RHOS (200)
 #define NUM_RHOS_HALF (100)
 #define SCALING (8.0)
+
+#define PI (3.14159265359)
 
 #define ERROR_CHECK_STATUS(status)                                                              \
     {                                                                                           \
@@ -67,8 +135,8 @@ vx_node userHoughTransformNode(vx_graph graph,
     vx_node node = vxCreateGenericNode(graph, kernel);
     ERROR_CHECK_OBJECT(node);
 
-    vx_array cos_lut = vxCreateArray(context, VX_TYPE_FLOAT32, NUM_THETAS);
-    vx_array sin_lut = vxCreateArray(context, VX_TYPE_FLOAT32, NUM_THETAS);
+    vx_array cos_lut = vxCreateArray(context, VX_TYPE_FLOAT64, NUM_THETAS);
+    vx_array sin_lut = vxCreateArray(context, VX_TYPE_FLOAT64, NUM_THETAS);
 
     ERROR_CHECK_STATUS(vxSetParameterByIndex(node, 0, (vx_reference)input));
     ERROR_CHECK_STATUS(vxSetParameterByIndex(node, 1, (vx_reference)rects));
@@ -126,13 +194,12 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
      * ****************************************/
 
     vx_rectangle_t line0 = {.start_x = 0, .start_y = width / 5, .end_x = height - 20, .end_y = 0};
-    vx_float32 k0 = ((vx_float32)line0.end_y - (vx_float32)line0.start_y) / ((vx_float32)line0.end_x - (vx_float32)line0.start_x);
-    vx_float32 n0 = (vx_int32)line0.start_y - k0 * (vx_int32)line0.start_x;
+    vx_float64 k0 = ((vx_float64)line0.end_y - (vx_float64)line0.start_y) / ((vx_float64)line0.end_x - (vx_float64)line0.start_x);
+    vx_float64 n0 = (vx_int32)line0.start_y - k0 * (vx_int32)line0.start_x;
 
     vx_rectangle_t line1 = {.start_x = 0, .start_y = 4 * width / 5, .end_x = height - 20, .end_y = width};
-    vx_float32 k1 = ((vx_float32)line1.end_y - (vx_float32)line1.start_y) / ((vx_float32)line1.end_x - (vx_float32)line1.start_x);
-    vx_float32 n1 = (vx_int32)line1.start_y - k1 * (vx_int32)line1.start_x;
-    vx_int32 curr_xx = line1.start_x;
+    vx_float64 k1 = ((vx_float64)line1.end_y - (vx_float64)line1.start_y) / ((vx_float64)line1.end_x - (vx_float64)line1.start_x);
+    vx_float64 n1 = (vx_int32)line1.start_y - k1 * (vx_int32)line1.start_x;
     vx_int32 curr_yy0;
     vx_int32 curr_yy1;
 
@@ -140,8 +207,7 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
      * for subsampled planes, scale will change.
      */
     vx_uint32 x, y, i, j;
-    vx_uint8 pixel = 0;
-    bool switched = vx_false_e;
+    vx_bool switched = vx_false_e;
     for (y = 0; y < addr_input.dim_y; y += addr_input.step_y)
     {
         switched = vx_false_e;
@@ -154,7 +220,10 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
             vx_uint8 *tmp = (vx_uint8 *)ptr_input;
             if (x == curr_yy0 || x == curr_yy1)
             {
-                switched = !switched;
+                if(switched == vx_true_e)
+                    switched = vx_false_e;
+                else
+                    switched = vx_true_e;
             }
             if (switched == vx_false_e)
             {
@@ -184,36 +253,45 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
                                        &addr, &base_ptr,
                                        VX_READ_AND_WRITE, VX_MEMORY_TYPE_HOST, 0));
 
-    for (y = 0; y < addr.dim_y; y += addr.step_y)
+    // for (y = 0; y < addr.dim_y; y += addr.step_y)
+    // {
+    //     j = (addr.stride_y * y * addr.scale_y) / VX_SCALE_UNITY;
+    //     for (x = 0; x < addr.dim_x; x += addr.step_x)
+    //     {
+    //         vx_uint8 *tmp = (vx_uint8 *)base_ptr;
+    //         i = j + (addr.stride_x * x * addr.scale_x) /
+    //                     VX_SCALE_UNITY;
+    //         tmp[i] = 0;
+    //         tmp[i + 1] = 0;
+    //     }
+    // }
+
+     for (vx_uint32 i = 0; i < addr.dim_x * addr.dim_y; i++)
     {
-        j = (addr.stride_y * y * addr.scale_y) / VX_SCALE_UNITY;
-        for (x = 0; x < addr.dim_x; x += addr.step_x)
-        {
-            vx_uint8 *tmp = (vx_uint8 *)base_ptr;
-            i = j + (addr.stride_x * x * addr.scale_x) /
-                        VX_SCALE_UNITY;
-            tmp[i] = 0;
-            tmp[i + 1] = 0;
-        }
+        vx_int16 *ptr2 = (vx_int16 *)vxFormatImagePatchAddress1d(base_ptr, i, &addr);
+        *ptr2 = 0;
     }
     /*****************************************************************************/
     vx_map_id cos_lut_map_id;
     void *cos_lut_base_ptr = NULL;
-    vx_size stride;
+    vx_uint64 stride;
     ERROR_CHECK_STATUS(vxMapArrayRange(cos_lut, 0, NUM_THETAS, &cos_lut_map_id, &stride, &cos_lut_base_ptr, VX_READ_AND_WRITE, VX_MEMORY_TYPE_HOST, 0));
-    vx_float32 *trig_cos = (vx_float32 *)cos_lut_base_ptr;
+    vx_float64 *trig_cos = (vx_float64 *)cos_lut_base_ptr;
 
     vx_map_id sin_lut_map_id;
     void *sin_lut_base_ptr = NULL;
     ERROR_CHECK_STATUS(vxMapArrayRange(sin_lut, 0, NUM_THETAS, &sin_lut_map_id, &stride, &sin_lut_base_ptr, VX_READ_AND_WRITE, VX_MEMORY_TYPE_HOST, 0));
-    vx_float32 *trig_sin = (vx_float32 *)sin_lut_base_ptr;
+    vx_float64 *trig_sin = (vx_float64 *)sin_lut_base_ptr;
 
+    FILE* img = fopen("/media/img_content.txt","w");
     for (vx_uint32 i = 0; i < width; i++)
     {
         for (vx_uint32 j = 0; j < height; j++)
         {
             vx_uint8 *ptr2 = (vx_uint8 *)vxFormatImagePatchAddress2d(ptr_input, i, j, &addr_input);
+            vx_uint8 p = *ptr2;
 
+            fprintf(img,"%d\n",p);
             // 1. calculate variables for non-zero pixels
             if (*ptr2 != 0)
             {
@@ -221,14 +299,14 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
                 for (vx_uint32 k = 0; k < NUM_THETAS; k++)
                 {
 
-                    vx_uint32 rho = NUM_RHOS_HALF + (i * trig_cos[k] - j * trig_sin[k]) / SCALING;
+                    vx_uint32 rho = NUM_RHOS_HALF + (vx_float64)((vx_float64)i * trig_cos[k] - (vx_float64)j * trig_sin[k]) / SCALING;
                     vx_int16 *ptr2 = (vx_int16 *)vxFormatImagePatchAddress2d(base_ptr, rho, k, &addr);
                     *ptr2 = *ptr2 + 1;
                 }
             }
         }
     }
-
+    fclose(img);
 
     vx_int32 left_max = 0, right_max = 0;
     vx_coordinates2d_t left_coord, right_coord;
@@ -239,8 +317,8 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
         {
             vx_int16 *pxl_lft = (vx_int16 *)vxFormatImagePatchAddress2d(base_ptr, j, i, &addr);
             vx_int16 *pxl_rght = (vx_int16 *)vxFormatImagePatchAddress2d(base_ptr, j, i + NUM_THETAS_HALF, &addr);
-            vx_float32 theta1 = i * CV_PI / NUM_THETAS_LF;
-            vx_float32 theta2 = (i + NUM_THETAS_HALF) * CV_PI / NUM_THETAS_LF;
+            vx_float64 theta1 = (vx_float64)i * PI / NUM_THETAS_LF;
+            vx_float64 theta2 = ((vx_float64)i + NUM_THETAS_HALF) * PI / NUM_THETAS_LF;
             if (*pxl_lft > left_max && sin(theta1) < 0.8)
             {
                 left_max = *pxl_lft;
@@ -260,7 +338,9 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
     if (left == vx_true_e && right == vx_true_e)
     {
         vxAddArrayItems(output_arr, 1, &left_coord, sizeof(vx_coordinates2d_t));
+        printf("x0=%d,y0=%d\n",left_coord.x,left_coord.y);
         vxAddArrayItems(output_arr, 1, &right_coord, sizeof(vx_coordinates2d_t));
+        printf("x1=%d,y1=%d\n",right_coord.x,right_coord.y);
     }
 
     ERROR_CHECK_STATUS(vxUnmapImagePatch(accum, map_id));
@@ -342,12 +422,12 @@ vx_status VX_CALLBACK colorNodeValidator(vx_node node,
 void move_diagonally(void *base_rgb, vx_imagepatch_addressing_t rgb_imgpatch, vx_uint32 width, vx_uint32 height, vx_int32 x0, vx_int32 y0, vx_int32 x1, vx_int32 y1)
 {
 
-    vx_float32 k = ((vx_float32)y1 - (vx_float32)y0) / ((vx_float32)x1 - (vx_float32)x0);
-    vx_float32 n = (vx_int32)y0 - k * (vx_int32)x0;
+    vx_float64 k = ((vx_float64)y1 - (vx_float64)y0) / ((vx_float64)x1 - (vx_float64)x0);
+    vx_float64 n = (vx_int32)y0 - k * (vx_int32)x0;
     vx_int32 curr_xx = x0;
     vx_int32 curr_yy;
 
-    vx_uint32 x, y, i, j;
+    vx_uint32 y, i, j;
     vx_uint8 red = 255;
     vx_uint8 green = 0;
     vx_uint8 blue = 0;
@@ -376,7 +456,6 @@ vx_status VX_CALLBACK coloring_host_side_function(vx_node node, const vx_referen
     vx_image output_img = (vx_image)refs[2];
     vx_array roi_arr = (vx_array)refs[3];
 
-    vx_context context = vxGetContext((vx_reference)node);
 
     vx_uint32 width, height;
     ERROR_CHECK_STATUS(vxQueryImage(input_img, VX_IMAGE_ATTRIBUTE_WIDTH, &width, sizeof(vx_uint32)));
@@ -423,9 +502,9 @@ vx_status VX_CALLBACK coloring_host_side_function(vx_node node, const vx_referen
         {
             vx_int32 x0 = 0, x1 = roi_height - 1, y0, y1;
             vx_coordinates2d_t p = coords[i];
-            vx_float32 tann = tan(p.x * ((3.14) / (NUM_THETAS_LF)));
-            vx_float32 shifted = (vx_int32)p.y - NUM_RHOS_HALF;
-            vx_float32 coss = cos((vx_int32)p.x * 3.14 / (NUM_THETAS_LF));
+            vx_float64 tann = tan(p.x * ((3.14) / (NUM_THETAS_LF)));
+            vx_float64 shifted = (vx_int32)p.y - NUM_RHOS_HALF;
+            vx_float64 coss = cos((vx_int32)p.x * 3.14 / (NUM_THETAS_LF));
             y0 = x0 * tann + SCALING * (shifted / coss);
             y1 = x1 * tann + SCALING * (shifted / coss);
 
@@ -453,13 +532,19 @@ vx_status VX_CALLBACK initialization(vx_node node, const vx_reference *parameter
     vx_array cos_lut = (vx_array)parameters[2];
     vx_array sin_lut = (vx_array)parameters[3];
 
+    FILE *cos_table = fopen("/media/cos_table.txt","w");
+    FILE *sin_table = fopen("/media/sin_table.txt","w");
     for (vx_uint32 i = 0; i < NUM_THETAS; i++)
     {
-        vx_float32 ptr = cos(i / NUM_THETAS_LF * CV_PI);
-        vxAddArrayItems(cos_lut, 1, &ptr, sizeof(vx_float32));
-        ptr = sin(i / NUM_THETAS_LF * CV_PI);
-        vxAddArrayItems(sin_lut, 1, &ptr, sizeof(vx_float32));
+        vx_float64 ptr = cos(i / NUM_THETAS_LF * PI);
+        fprintf(cos_table,"%f\n",ptr);
+        vxAddArrayItems(cos_lut, 1, &ptr, sizeof(vx_float64));
+        ptr = sin(i / NUM_THETAS_LF * PI);
+        fprintf(sin_table,"%f\n",ptr);
+        vxAddArrayItems(sin_lut, 1, &ptr, sizeof(vx_float64));
     }
+    fclose(cos_table);
+    fclose(sin_table);
     return VX_SUCCESS;
 }
 
@@ -526,9 +611,37 @@ static void VX_CALLBACK log_callback(vx_context context, vx_reference ref, vx_st
         fflush(stdout);
     }
 }
-
-int main(int argc, char **argv)
+int32_t appInit()
 {
+    int32_t status = 0;
+
+    status = appCommonInit();
+
+    if(status == 0)
+    {
+        tivxInit();
+        tivxHostInit();
+    }
+    return status;
+}
+
+int32_t appDeInit()
+{
+    int32_t status = 0;
+
+    tivxHostDeInit();
+    tivxDeInit();
+    appCommonDeInit();
+
+    return status;
+}
+
+int main(int argc, char *argv[])
+{
+    int status = 0;
+
+    status = appInit();
+
     if (argc < 2)
     {
         printf("Usage:\n"
@@ -575,15 +688,15 @@ int main(int argc, char **argv)
     /*****************************************/
     // virtual images creation
     vx_image yuv_image = vxCreateVirtualImage(graph, width, height, VX_DF_IMAGE_IYUV);
-    vx_image luma_image = vxCreateVirtualImage(graph, width, height, VX_DF_IMAGE_U8);
+    vx_image luma_image = vxCreateImage(context, width, height, VX_DF_IMAGE_U8);
     vx_image gray_roi = vxCreateImageFromROI(luma_image, &roi_rect);
     vx_image blured_image[2];
     for (vx_size i = 0; i < 2; i++)
     {
-        blured_image[i] = vxCreateVirtualImage(graph, roi_width, roi_height, VX_DF_IMAGE_U8);
+        blured_image[i] = vxCreateImage(context, roi_width, roi_height, VX_DF_IMAGE_U8);
         ERROR_CHECK_OBJECT(blured_image[i]);
     }
-    vx_image edged_image = vxCreateVirtualImage(graph, roi_width, roi_height, VX_DF_IMAGE_U8);
+    vx_image edged_image = vxCreateImage(context, roi_width, roi_height, VX_DF_IMAGE_U8);
 
     ERROR_CHECK_OBJECT(yuv_image);
     ERROR_CHECK_OBJECT(luma_image);
@@ -617,89 +730,42 @@ int main(int argc, char **argv)
     }
     ERROR_CHECK_STATUS(vxVerifyGraph(graph));
 
-    string option = argv[1];
-    Mat input;
-
     clock_t begin,end;
-    double time_spent;
-    if (option == "--image")
+    double time_spent = 0.0;
+
+    char* option = argv[1];
+
+    if (!strcmp(option,"--image"))
     {
         begin = clock();
 
         ERROR_CHECK_STATUS(vxProcessGraph(graph));
 
         end = clock();
-        double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+        time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
         /*****************************************************
          * Writing image to file
          * ***************************************************/
-        
-        writeImage(output_filtered_image, "finished.ppm");
+        printf("prije write_image\n");
+        writeImage(luma_image,"/media/luma_image.ppm");
+        writeImage(blured_image[1],"/media/blured_image[1].ppm");
+        writeImage(edged_image,"/media/edged_image.ppm");
+        writeImage(output_filtered_image,"/media/finished.ppm");
         /***********************************************************************/
 
-        waitKey(0);
-    }
-    else if (option == "--live")
-    {
-        VideoCapture cap("../../dashcam1.mp4");
-        if (!cap.isOpened())
-        {
-            printf("Unable to open camera\n");
-            return 0;
-        }
-        for (;;)
-        {
-            clock_t begin = clock();
-            cap >> input;
-            resize(input, input, Size(width, height));
-            // imshow("inputWindow", input);
-            if (waitKey(30) >= 0)
-                break;
-            vx_rectangle_t cv_rgb_image_region;
-            cv_rgb_image_region.start_x = 0;
-            cv_rgb_image_region.start_y = 0;
-            cv_rgb_image_region.end_x = width;
-            cv_rgb_image_region.end_y = height;
-            vx_imagepatch_addressing_t cv_rgb_image_layout;
-            cv_rgb_image_layout.dim_x = input.cols;
-            cv_rgb_image_layout.dim_y = input.rows;
-            cv_rgb_image_layout.stride_x = input.elemSize();
-            cv_rgb_image_layout.stride_y = input.step;
-            vx_uint8 *cv_rgb_image_buffer = input.data;
-            ERROR_CHECK_STATUS(vxCopyImagePatch(input_rgb_image, &cv_rgb_image_region, 0,
-                                                &cv_rgb_image_layout, cv_rgb_image_buffer,
-                                                VX_WRITE_ONLY, VX_MEMORY_TYPE_HOST));
-            ERROR_CHECK_STATUS(vxProcessGraph(graph));
-
-            vx_rectangle_t rect = {0, 0, (vx_uint32)width, (vx_uint32)height};
-            vx_map_id map_id;
-            vx_imagepatch_addressing_t addr;
-            void *base_ptr = NULL;
-            vxMapImagePatch(output_filtered_image, &rect, 0, &map_id, &addr, &base_ptr, VX_READ_ONLY, VX_MEMORY_TYPE_HOST, 0);
-            Mat mat(height, width, CV_8UC3, base_ptr, addr.stride_y);
-            imshow("output", mat);
-            vxUnmapImagePatch(output_filtered_image, map_id);
-
-            end = clock();
-            time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-
-            if (waitKey(30) >= 0)
-                break;
-        }
-    }
-    else
-    {
-        printf("Usage:\n"
-               "./cannyDetect --image <imageName>\n"
-               "./cannyDetect --live \n");
-        return 0;
     }
     printf("FPS=%f\n",1.0/time_spent);
+    
     ERROR_CHECK_STATUS(vxReleaseImage(&output_filtered_image));
     ERROR_CHECK_STATUS(vxReleaseImage(&input_rgb_image));
     ERROR_CHECK_STATUS(vxReleaseGraph(&graph));
     ERROR_CHECK_STATUS(vxReleaseImage(&yuv_image));
     ERROR_CHECK_STATUS(vxReleaseImage(&luma_image));
     ERROR_CHECK_STATUS(vxReleaseContext(&context));
+    
+    if(status == 0)
+    {
+        appDeInit();
+    }
     return 0;
 }
