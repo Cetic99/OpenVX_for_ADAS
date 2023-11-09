@@ -13,10 +13,10 @@ typedef struct parametri {
 }PARAMETRI;
 
 
-#define NUM_THETAS 500
-#define NUM_THETAS_LF 500.0
-#define NUM_RHOS   500
-#define SCALING 10.0
+#define NUM_THETAS 800
+#define NUM_THETAS_LF 800.0
+#define NUM_RHOS   800
+#define SCALING 16.0
 
 //bez parametara
 std::vector<Point> houghLinesP(Mat input, int threshold, int num_lines) {
@@ -46,6 +46,79 @@ std::vector<Point> houghLinesP(Mat input, int threshold, int num_lines) {
 
 	Mat t;
 	normalize(m, t, 0,255, NORM_MINMAX,CV_8U );
+	cv::imshow("Local Maxima", t);
+
+	int neighborhoodSize = 5;
+	Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * neighborhoodSize + 1, 2 * neighborhoodSize + 1));
+	cv::Mat dilated;
+	cv::dilate(t, dilated, element);
+
+	int thresholdValue = 210; // Adjust this threshold value as needed
+	Mat thresholded;
+	cv::threshold(dilated, thresholded, thresholdValue, 255, cv::THRESH_BINARY);
+	Mat eroded;
+	erode(thresholded, eroded, getStructuringElement(MORPH_RECT, Size(11, 11)));
+	cv::imshow("Local Maximaa", thresholded);
+
+	std::vector<Point> tacke;
+
+	for (int i = 0; i < NUM_THETAS/2; i++) {
+		for (int j = 0; j < NUM_RHOS; j++) {
+			if (eroded.at<uchar>(i, j) != 0) {
+				if (sin(i * CV_PI / NUM_THETAS_LF) < 0.9) {
+					//printf("x=%d,y=%d\n", i, j);
+					tacke.push_back(Point(i, j));
+				}
+				
+			}
+		}
+	}
+	// Create a binary mask where values greater than the threshold are set to 255 (white) and others to 0 (black)
+	//cv::Mat thresholded;
+	//cv::compare(t, 100, thresholded, cv::CMP_GT);
+
+	//// Find coordinates (points) of values greater than the threshold
+	//std::vector<cv::Point> points;
+	//for (int y = 0; y < thresholded.rows; y++) {
+	//	for (int x = 0; x < thresholded.cols; x++) {
+	//		if (thresholded.at<uchar>(y, x) > 0) {
+	//			points.push_back(cv::Point(x, y));
+	//		}
+	//	}
+	//}
+	//imshow("transformisano", t);
+
+	return tacke;
+}
+
+//sa parametrima
+std::vector<Point> houghLinesP(Mat input, int threshold, int num_lines, int x) {
+
+	int cols = input.cols;
+	int rows = input.rows;
+	//cout << "cols=" << cols << "," << "rows=" << rows << endl;
+
+	//short(*transformisano_arr)[NUM_RHOS] = (short(*)[NUM_RHOS])calloc(NUM_THETAS * NUM_RHOS, sizeof(short));
+
+	Mat m(NUM_THETAS, NUM_RHOS, CV_16U, Scalar(0));
+
+	for (int i = 0; i < rows; i++) {
+		for (int j = 0; j < cols; j++) {
+			if (input.at<uchar>(i, j) != 0) {
+				// radi transformaciju
+				for (int k = 0; k < NUM_THETAS; k++) {
+					int rho = (NUM_RHOS / 2) + (j * cos(k / NUM_THETAS_LF * CV_PI) - i * sin(k / NUM_THETAS_LF * CV_PI)) / SCALING;
+
+					m.at<ushort>(k, rho)++;
+				}
+			}
+		}
+	}
+
+
+
+	Mat t;
+	normalize(m, t, 0, 255, NORM_MINMAX, CV_8U);
 
 	int neighborhoodSize = 5;
 	Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * neighborhoodSize + 1, 2 * neighborhoodSize + 1));
@@ -68,7 +141,7 @@ std::vector<Point> houghLinesP(Mat input, int threshold, int num_lines) {
 					//printf("x=%d,y=%d\n", i, j);
 					tacke.push_back(Point(i, j));
 				}
-				
+
 			}
 		}
 	}
@@ -118,11 +191,14 @@ int main(int argc, char** argv)
 	std::vector<Point> tacke = houghLinesP(dst, 10, 10);
 	for (Point p : tacke) {
 		int x0 = 500,x1 = 880, y0,y1;
+		float tann = tan(p.x * ((3.14) / (NUM_THETAS_LF)));
+		float shifted = p.y - NUM_RHOS / 2;
+		float coss = (cos(p.x * ((3.14) / (NUM_THETAS_LF))));
 		y0 = x0 * tan(p.x * ((3.14) / (NUM_THETAS_LF))) + SCALING * ((p.y - ((NUM_RHOS) / (2))) / (cos(p.x * ((3.14) / (NUM_THETAS_LF)))));
 		y1 = x1 * tan(p.x * ((3.14) / (NUM_THETAS_LF))) + SCALING * ((p.y - ((NUM_RHOS) / (2))) / (cos(p.x * ((3.14) / (NUM_THETAS_LF)))));
 		line(src_0, Point(y0, x0), Point(y1, x1), Scalar(0, 0, 255),3);
-		//cout << "Point0(x=" << x0 << ",y=" << y0 << ")" << endl;
-		//cout << "Point1(x=" << x1 << ",y=" << y1 << ")" << endl;
+		cout << "Point0(x=" << x0 << ",y=" << y0 << ")" << endl;
+		cout << "Point1(x=" << x1 << ",y=" << y1 << ")" << endl;
 	}
 
 	imshow("lined",src_0);
