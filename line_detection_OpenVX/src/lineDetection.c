@@ -1,71 +1,7 @@
-/*
- *
- * Copyright (c) 2017 Texas Instruments Incorporated
- *
- * All rights reserved not granted herein.
- *
- * Limited License.
- *
- * Texas Instruments Incorporated grants a world-wide, royalty-free, non-exclusive
- * license under copyrights and patents it now or hereafter owns or controls to make,
- * have made, use, import, offer to sell and sell ("Utilize") this software subject to the
- * terms herein.  With respect to the foregoing patent license, such license is granted
- * solely to the extent that any such patent is necessary to Utilize the software alone.
- * The patent license shall not apply to any combinations which include this software,
- * other than combinations with devices manufactured by or for TI ("TI Devices").
- * No hardware patent is licensed hereunder.
- *
- * Redistributions must preserve existing copyright notices and reproduce this license
- * (including the above copyright notice and the disclaimer and (if applicable) source
- * code license limitations below) in the documentation and/or other materials provided
- * with the distribution
- *
- * Redistribution and use in binary form, without modification, are permitted provided
- * that the following conditions are met:
- *
- * *       No reverse engineering, decompilation, or disassembly of this software is
- * permitted with respect to any software provided in binary form.
- *
- * *       any redistribution and use are licensed by TI for use only with TI Devices.
- *
- * *       Nothing shall obligate TI to provide you with source code for the software
- * licensed and provided to you in object code.
- *
- * If software source code is provided to you, modification and redistribution of the
- * source code are permitted provided that the following conditions are met:
- *
- * *       any redistribution and use of the source code, including any resulting derivative
- * works, are licensed by TI for use only with TI Devices.
- *
- * *       any redistribution and use of any object code compiled from the source code
- * and any resulting derivative works, are licensed by TI for use only with TI Devices.
- *
- * Neither the name of Texas Instruments Incorporated nor the names of its suppliers
- *
- * may be used to endorse or promote products derived from this software without
- * specific prior written permission.
- *
- * DISCLAIMER.
- *
- * THIS SOFTWARE IS PROVIDED BY TI AND TI'S LICENSORS "AS IS" AND ANY EXPRESS
- * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL TI AND TI'S LICENSORS BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
- * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
- * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
- * OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- */
-
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
 #include <stdint.h>
-#include <TI/tivx.h>
-#include <app_init.h>
 #include <stdlib.h>
 #include <time.h>
 
@@ -74,8 +10,8 @@
 #include <VX/vx_types.h>
 #include <VX/vxu.h>
 #include <VX/vx_nodes.h>
-#include "src/readImage.h"
-#include "src/writeImage.h"
+#include "readImage.h"
+#include "writeImage.h"
 #include <math.h>
 
 #define NUM_THETAS (200)
@@ -283,15 +219,11 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
     ERROR_CHECK_STATUS(vxMapArrayRange(sin_lut, 0, NUM_THETAS, &sin_lut_map_id, &stride, &sin_lut_base_ptr, VX_READ_AND_WRITE, VX_MEMORY_TYPE_HOST, 0));
     vx_float64 *trig_sin = (vx_float64 *)sin_lut_base_ptr;
 
-    FILE* img = fopen("/media/img_content.txt","w");
     for (vx_uint32 i = 0; i < width; i++)
     {
         for (vx_uint32 j = 0; j < height; j++)
         {
             vx_uint8 *ptr2 = (vx_uint8 *)vxFormatImagePatchAddress2d(ptr_input, i, j, &addr_input);
-            vx_uint8 p = *ptr2;
-
-            fprintf(img,"%d\n",p);
             // 1. calculate variables for non-zero pixels
             if (*ptr2 != 0)
             {
@@ -306,7 +238,6 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
             }
         }
     }
-    fclose(img);
 
     vx_int32 left_max = 0, right_max = 0;
     vx_coordinates2d_t left_coord, right_coord;
@@ -338,9 +269,7 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
     if (left == vx_true_e && right == vx_true_e)
     {
         vxAddArrayItems(output_arr, 1, &left_coord, sizeof(vx_coordinates2d_t));
-        printf("x0=%d,y0=%d\n",left_coord.x,left_coord.y);
         vxAddArrayItems(output_arr, 1, &right_coord, sizeof(vx_coordinates2d_t));
-        printf("x1=%d,y1=%d\n",right_coord.x,right_coord.y);
     }
 
     ERROR_CHECK_STATUS(vxUnmapImagePatch(accum, map_id));
@@ -532,19 +461,13 @@ vx_status VX_CALLBACK initialization(vx_node node, const vx_reference *parameter
     vx_array cos_lut = (vx_array)parameters[2];
     vx_array sin_lut = (vx_array)parameters[3];
 
-    FILE *cos_table = fopen("/media/cos_table.txt","w");
-    FILE *sin_table = fopen("/media/sin_table.txt","w");
     for (vx_uint32 i = 0; i < NUM_THETAS; i++)
     {
         vx_float64 ptr = cos(i / NUM_THETAS_LF * PI);
-        fprintf(cos_table,"%f\n",ptr);
         vxAddArrayItems(cos_lut, 1, &ptr, sizeof(vx_float64));
         ptr = sin(i / NUM_THETAS_LF * PI);
-        fprintf(sin_table,"%f\n",ptr);
         vxAddArrayItems(sin_lut, 1, &ptr, sizeof(vx_float64));
     }
-    fclose(cos_table);
-    fclose(sin_table);
     return VX_SUCCESS;
 }
 
@@ -611,42 +534,15 @@ static void VX_CALLBACK log_callback(vx_context context, vx_reference ref, vx_st
         fflush(stdout);
     }
 }
-int32_t appInit()
-{
-    int32_t status = 0;
-
-    status = appCommonInit();
-
-    if(status == 0)
-    {
-        tivxInit();
-        tivxHostInit();
-    }
-    return status;
-}
-
-int32_t appDeInit()
-{
-    int32_t status = 0;
-
-    tivxHostDeInit();
-    tivxDeInit();
-    appCommonDeInit();
-
-    return status;
-}
 
 int main(int argc, char *argv[])
 {
-    int status = 0;
-
-    status = appInit();
 
     if (argc < 2)
     {
         printf("Usage:\n"
-               "./SegmentacijaSlike --image <imageName>\n"
-               "./cannyDetect --live \n");
+               "./lineDetection --image <imageName>\n"
+               "./lineDetection --video <videoName>\n");
         return 0;
     }
 
@@ -663,16 +559,16 @@ int main(int argc, char *argv[])
     ERROR_CHECK_OBJECT(graph);
 
     // context data
-    //vx_image input_rgb_image = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
+    vx_image input_rgb_image = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
 
     /**************************************
      * Reading image from file
      * ************************************/
-     struct read_image_attributes attr;
-     vx_image input_rgb_image = createImageFromFile(context, argv[2], &attr);
-     ERROR_CHECK_OBJECT(input_rgb_image);
-     width = attr.width;
-     height = attr.height;
+    //  struct read_image_attributes attr;
+    //  vx_image input_rgb_image = createImageFromFile(context, argv[2], &attr);
+    //  ERROR_CHECK_OBJECT(input_rgb_image);
+    //  width = attr.width;
+    //  height = attr.height;
     vx_image output_filtered_image = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
     ERROR_CHECK_OBJECT(output_filtered_image);
 
@@ -747,12 +643,34 @@ int main(int argc, char *argv[])
          * Writing image to file
          * ***************************************************/
         printf("prije write_image\n");
-        writeImage(luma_image,"/media/luma_image.ppm");
-        writeImage(blured_image[1],"/media/blured_image[1].ppm");
-        writeImage(edged_image,"/media/edged_image.ppm");
-        writeImage(output_filtered_image,"/media/finished.ppm");
+        writeImage(luma_image,"luma_image.ppm");
+        writeImage(blured_image[1],"blured_image[1].ppm");
+        writeImage(edged_image,"edged_image.ppm");
+        writeImage(output_filtered_image,"finished.ppm");
         /***********************************************************************/
 
+    }
+    else if(!strcmp(option,"--video")){ 
+        FILE * video_file = fopen(argv[2],"rb");
+        FILE* output_file = fopen("output_video.bin","wb");
+        vx_rectangle_t in_rect = {0,0,width,height};
+        vx_map_id in_map;
+        vx_imagepatch_addressing_t addr;
+        unsigned char *in_ptr;
+        ERROR_CHECK_STATUS(vxMapImagePatch(input_rgb_image,&in_rect,0,&in_map,&addr,&in_ptr,VX_WRITE_ONLY,VX_MEMORY_TYPE_HOST,VX_NOGAP_X));
+        while(fread(in_ptr,1,width*height*3,video_file) == width*height*3){
+            ERROR_CHECK_STATUS(vxUnmapImagePatch(input_rgb_image,in_map));
+
+            ERROR_CHECK_STATUS(vxProcessGraph(graph));
+
+            ERROR_CHECK_STATUS(vxMapImagePatch(output_filtered_image,&in_rect,0,&in_map,&addr,&in_ptr,VX_WRITE_ONLY,VX_MEMORY_TYPE_HOST,VX_NOGAP_X));
+            fwrite(in_ptr,1,width*height*3,output_file);
+            ERROR_CHECK_STATUS(vxUnmapImagePatch(output_filtered_image,in_map));
+
+            ERROR_CHECK_STATUS(vxMapImagePatch(input_rgb_image,&in_rect,0,&in_map,&addr,&in_ptr,VX_WRITE_ONLY,VX_MEMORY_TYPE_HOST,VX_NOGAP_X));
+        }
+        fclose(video_file);
+        fclose(output_file);
     }
     printf("FPS=%f\n",1.0/time_spent);
     
@@ -763,9 +681,5 @@ int main(int argc, char *argv[])
     ERROR_CHECK_STATUS(vxReleaseImage(&luma_image));
     ERROR_CHECK_STATUS(vxReleaseContext(&context));
     
-    if(status == 0)
-    {
-        appDeInit();
-    }
     return 0;
 }
