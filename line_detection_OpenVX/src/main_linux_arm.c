@@ -69,6 +69,8 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include <tivx_utils_graph_perf.h>
+#include <utils/perf_stats/include/app_perf_stats.h>
 #include <VX/vx.h>
 #include <VX/vx_compatibility.h>
 #include <VX/vx_types.h>
@@ -285,7 +287,8 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
 
     for (vx_uint32 i = 0; i < width; i++)
     {
-        for (vx_uint32 j = 0; j < height; j++)
+        // From 10 because canny edge detector has some problem with upper edge
+        for (vx_uint32 j = 10; j < height; j++)
         {
             vx_uint8 *ptr2 = (vx_uint8 *)vxFormatImagePatchAddress2d(ptr_input, i, j, &addr_input);
             // 1. calculate variables for non-zero pixels
@@ -333,9 +336,7 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
     if (left == vx_true_e && right == vx_true_e)
     {
         vxAddArrayItems(output_arr, 1, &left_coord, sizeof(vx_coordinates2d_t));
-        printf("x0=%d,y0=%d\n",left_coord.x,left_coord.y);
         vxAddArrayItems(output_arr, 1, &right_coord, sizeof(vx_coordinates2d_t));
-        printf("x1=%d,y1=%d\n",right_coord.x,right_coord.y);
     }
 
     ERROR_CHECK_STATUS(vxUnmapImagePatch(accum, map_id));
@@ -345,7 +346,7 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
     ERROR_CHECK_STATUS(vxUnmapArrayRange(sin_lut, sin_lut_map_id));
 
     ERROR_CHECK_STATUS(vxUnmapImagePatch(input, map_input));
-    ERROR_CHECK_STATUS(vxReleaseImage(&input));
+    //ERROR_CHECK_STATUS(vxReleaseImage(&input));
 
     return VX_SUCCESS;
 }
@@ -466,6 +467,7 @@ vx_status VX_CALLBACK coloring_host_side_function(vx_node node, const vx_referen
     roi_height = roi_rect->end_y - roi_rect->start_y;
     vx_rectangle_t roied_roi_rectangle = {.start_x = 0, .start_y = 0, .end_x = roi_width, .end_y = roi_height};
     vx_image cropped_in_img = vxCreateImageFromROI(input_img, roi_rect);
+    ERROR_CHECK_OBJECT(cropped_in_img);
 
     /**************************************************
      * Mapping image R,G,B components
@@ -510,12 +512,14 @@ vx_status VX_CALLBACK coloring_host_side_function(vx_node node, const vx_referen
     }
 
     ERROR_CHECK_STATUS(vxUnmapImagePatch(cropped_in_img, cropped_map_id));
+    ERROR_CHECK_STATUS(vxReleaseImage(&cropped_in_img));
     vxCopyImagePatch(input_img, &whole_rectangle, 0, &out_imgpatch, out_ptr, VX_READ_ONLY, VX_MEMORY_TYPE_HOST);
     ERROR_CHECK_STATUS(vxUnmapImagePatch(output_img, out_map_id));
     ERROR_CHECK_STATUS(vxUnmapArrayRange(roi_arr, roi_mapid));
-    ERROR_CHECK_STATUS(vxReleaseArray(&roi_arr));
-    ERROR_CHECK_STATUS(vxReleaseImage(&input_img));
-    ERROR_CHECK_STATUS(vxReleaseImage(&output_img));
+    // ERROR_CHECK_STATUS(vxReleaseArray(&roi_arr));
+    // ERROR_CHECK_STATUS(vxReleaseArray(&coords_arr));
+    // ERROR_CHECK_STATUS(vxReleaseImage(&input_img));
+    // ERROR_CHECK_STATUS(vxReleaseImage(&output_img));
 
     return VX_SUCCESS;
 }
@@ -627,6 +631,8 @@ int32_t appDeInit()
 
 int main(int argc, char *argv[])
 {
+
+    app_perf_point_t performance;
     int status = 0;
 
     status = appInit();
@@ -651,17 +657,23 @@ int main(int argc, char *argv[])
     vx_graph graph = vxCreateGraph(context);
     ERROR_CHECK_OBJECT(graph);
 
-    // context data
-    //vx_image input_rgb_image = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
 
     /**************************************
      * Reading image from file
      * ************************************/
-     struct read_image_attributes attr;
-     vx_image input_rgb_image = createImageFromFile(context, argv[2], &attr);
-     ERROR_CHECK_OBJECT(input_rgb_image);
-     width = attr.width;
-     height = attr.height;
+    char* option = argv[1];
+     vx_image input_rgb_image;
+     if (!strcmp(option,"--image"))
+    {
+        struct read_image_attributes attr;
+        input_rgb_image = createImageFromFile(context, argv[2], &attr);
+        width = attr.width;
+        height = attr.height;
+    }
+    else if(!strcmp(option,"--video")){
+        input_rgb_image = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
+    }
+    ERROR_CHECK_OBJECT(input_rgb_image);
     vx_image output_filtered_image = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
     ERROR_CHECK_OBJECT(output_filtered_image);
 
@@ -676,7 +688,7 @@ int main(int argc, char *argv[])
 
     /*****************************************/
     // virtual images creation
-    vx_image yuv_image = vxCreateVirtualImage(graph, width, height, VX_DF_IMAGE_IYUV);
+    vx_image yuv_image = vxCreateImage(context, width, height, VX_DF_IMAGE_IYUV);
     vx_image luma_image = vxCreateImage(context, width, height, VX_DF_IMAGE_U8);
     vx_image gray_roi = vxCreateImageFromROI(luma_image, &roi_rect);
     vx_image blured_image[2];
@@ -722,7 +734,6 @@ int main(int argc, char *argv[])
     clock_t begin,end;
     double time_spent = 0.0;
 
-    char* option = argv[1];
 
     if (!strcmp(option,"--image"))
     {
@@ -738,11 +749,47 @@ int main(int argc, char *argv[])
         printf("prije write_image\n");
         //writeImage(luma_image,"/media/luma_image.ppm");
         //writeImage(blured_image[1],"/media/blured_image[1].ppm");
-        //writeImage(edged_image,"/media/edged_image.ppm");
+        writeImage(edged_image,"/media/edged_image.ppm");
         writeImage(output_filtered_image,"/media/finished.ppm");
         /***********************************************************************/
 
     }
+    else if(!strcmp(option,"--video")){ 
+        FILE * video_file = fopen(argv[2],"rb");
+        FILE* output_file = fopen("/media/output_video.bin","wb");
+        if(!video_file || !output_file )
+        {
+            printf("Neuspjesno otvaranje fajlova\n");
+            appDeInit();
+            return 0;
+        }
+        vx_rectangle_t in_rect = {0,0,width,height};
+        vx_map_id in_map;
+        vx_imagepatch_addressing_t addr;
+        void *in_ptr;
+        ERROR_CHECK_STATUS(vxMapImagePatch(input_rgb_image,&in_rect,0,&in_map,&addr,&in_ptr,VX_WRITE_ONLY,VX_MEMORY_TYPE_HOST,VX_NOGAP_X));
+        vx_int32 count = 0;
+        appPerfStatsResetAll();
+        while(fread(in_ptr,1,width*height*3,video_file) == width*height*3){
+            appPerfPointBegin(&performance);
+            ERROR_CHECK_STATUS(vxUnmapImagePatch(input_rgb_image,in_map));
+
+            printf("FRAME count =%d\n",count++);
+            ERROR_CHECK_STATUS(vxProcessGraph(graph));
+            appPerfPointEnd(&performance);
+
+            ERROR_CHECK_STATUS(vxMapImagePatch(output_filtered_image,&in_rect,0,&in_map,&addr,&in_ptr,VX_WRITE_ONLY,VX_MEMORY_TYPE_HOST,VX_NOGAP_X));
+            fwrite(in_ptr,1,width*height*3,output_file);
+            ERROR_CHECK_STATUS(vxUnmapImagePatch(output_filtered_image,in_map));
+
+            ERROR_CHECK_STATUS(vxMapImagePatch(input_rgb_image,&in_rect,0,&in_map,&addr,&in_ptr,VX_WRITE_ONLY,VX_MEMORY_TYPE_HOST,VX_NOGAP_X));
+        }
+        ERROR_CHECK_STATUS(vxUnmapImagePatch(input_rgb_image,in_map));
+        fclose(video_file);
+        fclose(output_file);
+    }
+    tivx_utils_graph_perf_print(graph);
+    appPerfPointPrintFPS(&performance);
     printf("FPS=%f\n",1.0/time_spent);
     
     ERROR_CHECK_STATUS(vxReleaseImage(&output_filtered_image));
