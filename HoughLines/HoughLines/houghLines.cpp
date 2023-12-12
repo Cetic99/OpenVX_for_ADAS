@@ -13,10 +13,19 @@ typedef struct parametri {
 }PARAMETRI;
 
 
-#define NUM_THETAS 800
-#define NUM_THETAS_LF 800.0
-#define NUM_RHOS   800
-#define SCALING 16.0
+#define NUM_THETAS 		(600)
+#define NUM_THETAS_LF 	(NUM_THETAS / 1.0)
+#define NUM_THETAS_HALF (NUM_THETAS / 2.0)
+#define NUM_RHOS   		(600)
+#define SCALING 		(2.0)
+
+#define ROI_X			(350)
+#define ROI_Y			(300)
+#define ROI_WIDTH		(1280-450-ROI_X)
+#define ROI_HEIGHT		(720-230-ROI_Y)
+
+#define WIDTH			(1280)
+#define HEIGHT			(720)
 
 //bez parametara
 std::vector<Point> houghLinesP(Mat input, int threshold, int num_lines) {
@@ -27,78 +36,40 @@ std::vector<Point> houghLinesP(Mat input, int threshold, int num_lines) {
 
 	//short(*transformisano_arr)[NUM_RHOS] = (short(*)[NUM_RHOS])calloc(NUM_THETAS * NUM_RHOS, sizeof(short));
 
-	Mat m(NUM_THETAS, NUM_RHOS, CV_16U, Scalar(0));
+	Rect line0 = Rect(0, 2*cols / 5, rows - 20, 0);
+	float_t k0 = ((float_t)line0.height - (float_t)line0.y) / ((float_t)line0.width - (float_t)line0.x);
+	float_t n0 = (int32_t)line0.y - k0 * (int32_t)line0.x;
 
-	for (int i = 0; i < rows; i++) {
-		for (int j = 0; j < cols; j++) {
-			if (input.at<uchar>(i, j) != 0) {
-				// radi transformaciju
-				for (int k = 0; k < NUM_THETAS; k++) {
-					int rho =  (NUM_RHOS/2)+ (j * cos(k / NUM_THETAS_LF * CV_PI) - i * sin(k / NUM_THETAS_LF * CV_PI))/SCALING;
+	Rect line1 = Rect(0, 3 * cols / 5, rows - 20, cols);
+	float_t k1 = ((float_t)line1.height - (float_t)line1.y) / ((float_t)line1.width - (float_t)line1.x);
+	float_t n1 = (int32_t)line1.y - k1 * (int32_t)line1.x;
+	int32_t curr_yy0;
+	int32_t curr_yy1;
 
-					m.at<ushort>(k, rho)++;
-				}
+	uint32_t x, y, i, j;
+	bool switched = false;
+	for (y = 0; y < rows; y++)
+	{
+		switched = false;
+		uint8_t state = 0;
+		curr_yy0 = k0 * y + n0;
+		curr_yy1 = k1 * y + n1;
+		for (x = 0; x < cols; x++)
+		{
+			if (x == curr_yy0 || x == curr_yy1)
+			{
+				if (switched == true)
+					switched = false;
+				else
+					switched = true;
+			}
+			if (switched == false)
+			{
+				input.at<uchar>(y, x) = state;
 			}
 		}
 	}
-
-
-
-	Mat t;
-	normalize(m, t, 0,255, NORM_MINMAX,CV_8U );
-	cv::imshow("Local Maxima", t);
-
-	int neighborhoodSize = 5;
-	Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * neighborhoodSize + 1, 2 * neighborhoodSize + 1));
-	cv::Mat dilated;
-	cv::dilate(t, dilated, element);
-
-	int thresholdValue = 210; // Adjust this threshold value as needed
-	Mat thresholded;
-	cv::threshold(dilated, thresholded, thresholdValue, 255, cv::THRESH_BINARY);
-	Mat eroded;
-	erode(thresholded, eroded, getStructuringElement(MORPH_RECT, Size(11, 11)));
-	cv::imshow("Local Maximaa", thresholded);
-
-	std::vector<Point> tacke;
-
-	for (int i = 0; i < NUM_THETAS/2; i++) {
-		for (int j = 0; j < NUM_RHOS; j++) {
-			if (eroded.at<uchar>(i, j) != 0) {
-				if (sin(i * CV_PI / NUM_THETAS_LF) < 0.9) {
-					//printf("x=%d,y=%d\n", i, j);
-					tacke.push_back(Point(i, j));
-				}
-				
-			}
-		}
-	}
-	// Create a binary mask where values greater than the threshold are set to 255 (white) and others to 0 (black)
-	//cv::Mat thresholded;
-	//cv::compare(t, 100, thresholded, cv::CMP_GT);
-
-	//// Find coordinates (points) of values greater than the threshold
-	//std::vector<cv::Point> points;
-	//for (int y = 0; y < thresholded.rows; y++) {
-	//	for (int x = 0; x < thresholded.cols; x++) {
-	//		if (thresholded.at<uchar>(y, x) > 0) {
-	//			points.push_back(cv::Point(x, y));
-	//		}
-	//	}
-	//}
-	//imshow("transformisano", t);
-
-	return tacke;
-}
-
-//sa parametrima
-std::vector<Point> houghLinesP(Mat input, int threshold, int num_lines, int x) {
-
-	int cols = input.cols;
-	int rows = input.rows;
-	//cout << "cols=" << cols << "," << "rows=" << rows << endl;
-
-	//short(*transformisano_arr)[NUM_RHOS] = (short(*)[NUM_RHOS])calloc(NUM_THETAS * NUM_RHOS, sizeof(short));
+	imshow("roired_img", input);
 
 	Mat m(NUM_THETAS, NUM_RHOS, CV_16U, Scalar(0));
 
@@ -117,146 +88,154 @@ std::vector<Point> houghLinesP(Mat input, int threshold, int num_lines, int x) {
 
 
 
-	Mat t;
-	normalize(m, t, 0, 255, NORM_MINMAX, CV_8U);
-
-	int neighborhoodSize = 5;
-	Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * neighborhoodSize + 1, 2 * neighborhoodSize + 1));
-	cv::Mat dilated;
-	cv::dilate(t, dilated, element);
-
-	int thresholdValue = 210; // Adjust this threshold value as needed
-	Mat thresholded;
-	cv::threshold(dilated, thresholded, thresholdValue, 255, cv::THRESH_BINARY);
-	Mat eroded;
-	erode(thresholded, eroded, getStructuringElement(MORPH_RECT, Size(11, 11)));
-	//cv::imshow("Local Maxima", eroded);
+	Mat normalized;
+	Mat normalized_for_showing;
+	normalize(m, normalized, 0, 255, NORM_MINMAX, CV_8U);
+	resize(normalized, normalized_for_showing, Size(600,600));
+	cv::imshow("Accumulator", normalized_for_showing);
 
 	std::vector<Point> tacke;
-
-	for (int i = 0; i < NUM_THETAS; i++) {
+	int32_t left_max = 0, right_max = 0;
+	Point left_coord, right_coord;
+	bool left = false, right = false;
+	for (int i = 0; i < NUM_THETAS_HALF; i++) {
 		for (int j = 0; j < NUM_RHOS; j++) {
-			if (eroded.at<uchar>(i, j) != 0) {
-				if (sin(i * CV_PI / NUM_THETAS_LF) < 0.9) {
-					//printf("x=%d,y=%d\n", i, j);
-					tacke.push_back(Point(i, j));
-				}
-
+			uint8_t pixel0 = normalized.at<uchar>(i, j);
+			uint8_t pixel1 = normalized.at<uchar>(i + NUM_THETAS_HALF, j);
+			float_t theta1 = (float_t)i * CV_PI / NUM_THETAS_LF;
+			float_t theta2 = ((float_t)i + NUM_THETAS_HALF) * CV_PI / NUM_THETAS_LF;
+			if (pixel0 > left_max && sin(theta1) < 0.8)
+			{
+				left_max = pixel0;
+				left_coord = Point(i, j);
+				left = true;
+			}
+			if (pixel1 > right_max && sin(theta2) < 0.8)
+			{
+				right_max = pixel1;
+				right_coord = Point(i + NUM_THETAS_HALF, j);
+				right = true;
 			}
 		}
 	}
-	// Create a binary mask where values greater than the threshold are set to 255 (white) and others to 0 (black)
-	//cv::Mat thresholded;
-	//cv::compare(t, 100, thresholded, cv::CMP_GT);
-
-	//// Find coordinates (points) of values greater than the threshold
-	//std::vector<cv::Point> points;
-	//for (int y = 0; y < thresholded.rows; y++) {
-	//	for (int x = 0; x < thresholded.cols; x++) {
-	//		if (thresholded.at<uchar>(y, x) > 0) {
-	//			points.push_back(cv::Point(x, y));
-	//		}
-	//	}
-	//}
-	//imshow("transformisano", t);
-
+	tacke.push_back(left_coord);
+	tacke.push_back(right_coord);
 	return tacke;
 }
 
 
 
+
 int main(int argc, char** argv)
 {
-	// Declare the output variables
-	Mat dst, cdst;
-	const char* default_file = "../../../../resources/images/working_image.png";
-	const char* filename = argc >= 2 ? argv[1] : default_file;
-	// Loads an image
-	Mat src_0 = imread(samples::findFile(filename), IMREAD_COLOR);
+	// Working roi
+	Rect roi(ROI_X, ROI_Y, ROI_WIDTH, ROI_HEIGHT);
+
+	// intermediate Mat objects
 	Mat src;
-	cvtColor(src_0, src, COLOR_RGB2GRAY);
-	// Check if image is loaded fine
-	if (src.empty()) {
+	Mat src_roi;
+	Mat gray_src(720, 1280, CV_8UC3);
+	Mat gray_roi;
+	Mat blured0;
+	Mat blured1;
+	Mat edged;
+
+	if (!strcmp("--image", argv[1])) {
+		resize(imread(argv[2]), src, Size(WIDTH, HEIGHT));
+		/***************************************************
+		*		PROCEDURE
+		****************************************************/
+		// 1. Converting to grayscale
+
+		cvtColor(src, gray_src, COLOR_RGB2GRAY);
+		gray_roi = gray_src(roi);
+		imshow("grayed_roi", gray_roi);
+		// 2. Bluring image
+		GaussianBlur(gray_roi, blured0, Size(3, 3), 0);
+		GaussianBlur(blured0, blured1, Size(3, 3), 0);
+		imshow("blured_images", blured1);
+		// 3. Detecting edges
+		Canny(blured1, edged, 150, 200, 3);
+		imshow("edged", edged);
+
+		std::vector<Point> tacke = houghLinesP(edged, 10, 10);
+		src_roi = src(roi);
+		for (Point p : tacke) {
+			int x0 = 50;
+			int x1 = ROI_HEIGHT, y0, y1;
+			float tann = tan(p.x * ((3.14) / (NUM_THETAS_LF)));
+			float shifted = p.y - NUM_RHOS / 2;
+			float coss = (cos(p.x * ((3.14) / (NUM_THETAS_LF))));
+			y0 = x0 * tan(p.x * ((3.14) / (NUM_THETAS_LF))) + SCALING * ((p.y - ((NUM_RHOS) / (2))) / (cos(p.x * ((3.14) / (NUM_THETAS_LF)))));
+			y1 = x1 * tan(p.x * ((3.14) / (NUM_THETAS_LF))) + SCALING * ((p.y - ((NUM_RHOS) / (2))) / (cos(p.x * ((3.14) / (NUM_THETAS_LF)))));
+			line(src_roi, Point(y0, x0), Point(y1, x1), Scalar(0, 0, 255), 3);
+			cout << "Point0(x=" << x0 << ",y=" << y0 << ")" << endl;
+			cout << "Point1(x=" << x1 << ",y=" << y1 << ")" << endl;
+		}
+
+		imshow("lined", src);
+
+
+	}
+	else if (!strcmp("--video", argv[1])) {
+		VideoCapture cap(argv[2]);
+		if (!cap.isOpened()) {
+			printf("Unable to open camera\n");
+			return 0;
+		}
+		for (;;) {
+			cap >> src;
+			resize(src, src, Size(WIDTH, HEIGHT));
+			if (waitKey(30) >= 0) break;
+			/***************************************************
+			*		PROCEDURE
+			****************************************************/
+			imshow("original_img", src);
+			// 1. Converting to grayscale
+			cvtColor(src, gray_src, COLOR_RGB2GRAY);
+			imshow("grayscale_image", gray_src);
+			gray_roi = gray_src(roi);
+			imshow("grayed_roi", gray_roi);
+			// 2. Bluring image
+			GaussianBlur(gray_roi, blured0, Size(3, 3), 0);
+			GaussianBlur(blured0, blured1, Size(3, 3), 0);
+			imshow("blured_images", blured1);
+			// 3. Detecting edges
+			Canny(blured1, edged, 150, 200, 3);
+			imshow("edged", edged);
+
+			std::vector<Point> tacke = houghLinesP(edged, 10, 10);
+			src_roi = src(roi);
+			for (Point p : tacke) {
+				int x0 = 50;
+				int x1 = ROI_HEIGHT, y0, y1;
+				float tann = tan(p.x * ((3.14) / (NUM_THETAS_LF)));
+				float shifted = p.y - NUM_RHOS / 2;
+				float coss = (cos(p.x * ((3.14) / (NUM_THETAS_LF))));
+				y0 = x0 * tan(p.x * ((3.14) / (NUM_THETAS_LF))) + SCALING * ((p.y - ((NUM_RHOS) / (2))) / (cos(p.x * ((3.14) / (NUM_THETAS_LF)))));
+				y1 = x1 * tan(p.x * ((3.14) / (NUM_THETAS_LF))) + SCALING * ((p.y - ((NUM_RHOS) / (2))) / (cos(p.x * ((3.14) / (NUM_THETAS_LF)))));
+				line(src_roi, Point(y0, x0), Point(y1, x1), Scalar(0, 0, 255), 3);
+				cout << "Point0(x=" << x0 << ",y=" << y0 << ")" << endl;
+				cout << "Point1(x=" << x1 << ",y=" << y1 << ")" << endl;
+			}
+
+			imshow("lined", src);
+			/*=================== drawing lines =============================================*/
+
+			/*============================================================================*/
+			//imshow( "CannyDetect", mat );
+			//imshow("inputWindow", input);
+			if (waitKey(30) >= 0) break;
+		}
+	}
+	else {
 		printf(" Error opening image\n");
-		printf(" Program Arguments: [image_name -- default %s] \n", default_file);
+		printf("usage --image <path_to_image>\n");
+		printf("usage --video <path_to_video>\n");
 		return -1;
 	}
-	Mat blured;
-	GaussianBlur(src, blured, Size(3, 3),0);
-	// Edge detection
-	Canny(blured, dst, 150, 200, 3);
-
-	//imshow("edged", dst);
-
-	std::vector<Point> tacke = houghLinesP(dst, 10, 10);
-	for (Point p : tacke) {
-		int x0 = 500,x1 = 880, y0,y1;
-		float tann = tan(p.x * ((3.14) / (NUM_THETAS_LF)));
-		float shifted = p.y - NUM_RHOS / 2;
-		float coss = (cos(p.x * ((3.14) / (NUM_THETAS_LF))));
-		y0 = x0 * tan(p.x * ((3.14) / (NUM_THETAS_LF))) + SCALING * ((p.y - ((NUM_RHOS) / (2))) / (cos(p.x * ((3.14) / (NUM_THETAS_LF)))));
-		y1 = x1 * tan(p.x * ((3.14) / (NUM_THETAS_LF))) + SCALING * ((p.y - ((NUM_RHOS) / (2))) / (cos(p.x * ((3.14) / (NUM_THETAS_LF)))));
-		line(src_0, Point(y0, x0), Point(y1, x1), Scalar(0, 0, 255),3);
-		cout << "Point0(x=" << x0 << ",y=" << y0 << ")" << endl;
-		cout << "Point1(x=" << x1 << ",y=" << y1 << ")" << endl;
-	}
-
-	imshow("lined",src_0);
-	
-	
-
-	//// Copy edges to the images that will display the results in BGR
-	//cvtColor(dst, cdst, COLOR_GRAY2BGR);
-	//Mat cdstP = cdst.clone();
 
 
-
-	//Rect roi = Rect(cvRound(1*(dst.cols / 10)), cvRound(11*(dst.rows / 20)), cvRound(8*(dst.cols / 10)), cvRound(9*(dst.rows / 20)));
-
-	//Mat cropped_gray = dst(roi);
-	//Mat cropped_colored = src_0(roi);
-	////cvtColor(cropped_gray, cropped_colored, COLOR_GRAY2BGR);
-
-	//
-	//// Standard Hough Line Transform
-	//vector<Vec2f> lines; // will hold the results of the detection
-	//HoughLines(cropped_gray, lines, 1, CV_PI / 180, 200, 0, 0); // runs the actual detection
-	//// Draw the lines
-
-
-	//for (size_t i = 0; i < lines.size(); i++)
-	//{
-	//	float rho = lines[i][0], theta = lines[i][1];
-	//	Point pt1, pt2;
-	//	double a = cos(theta), b = sin(theta);
-	//	if (b > 0.9)
-	//		continue;
-	//	double x0 = a * rho, y0 = b * rho;
-	//	pt1.x = cvRound(x0 + 10000 * (-b));
-	//	pt1.y = cvRound(y0 + 10000 * (a));
-	//	pt2.x = cvRound(x0 - 10000 * (-b));
-	//	pt2.y = cvRound(y0 - 10000 * (a));
-	//	line(cropped_colored, pt1, pt2, Scalar(0, 0, 255), 3, LINE_AA);
-	//}
-
-	//cropped_colored.copyTo(src_0(roi));
-
-	// Show results
-	//imshow("Source", src_0);
-	//imshow("asdf", cropped_colored);
-	//imshow("Detected Lines (in red) - Standard Hough Line Transform", cdst);
-
-
-	// Probabilistic Line Transform
-	//vector<Vec4i> linesP; // will hold the results of the detection
-	//HoughLinesP(dst, linesP, 1, CV_PI / 180, 100, 50, 10); // runs the actual detection
-	//// Draw the lines
-	//for (size_t i = 0; i < linesP.size(); i++)
-	//{
-	//	Vec4i l = linesP[i];
-	//	line(cdstP, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(0, 0, 255), 3, LINE_AA);
-	//}
-	//imshow("Detected Lines (in red) - Probabilistic Hough Line Transform", cdstP);
 	// Wait and Exit
 	waitKey();
 	return 0;

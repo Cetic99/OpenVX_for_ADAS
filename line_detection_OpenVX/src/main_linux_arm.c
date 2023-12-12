@@ -60,6 +60,10 @@
  *
  */
 
+/**
+ * @author  Nikola Cetic
+*/
+
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
@@ -80,12 +84,20 @@
 #include "src/writeImage.h"
 #include <math.h>
 
-#define NUM_THETAS (200)
-#define NUM_THETAS_HALF (100)
-#define NUM_THETAS_LF (200.0)
-#define NUM_RHOS (200)
-#define NUM_RHOS_HALF (100)
-#define SCALING (8.0)
+#define NUM_THETAS 		(200)
+#define NUM_THETAS_LF 	(NUM_THETAS / 1.0)
+#define NUM_THETAS_HALF (NUM_THETAS / 2.0)
+#define NUM_RHOS   		(200)
+#define NUM_RHOS_HALF   (NUM_RHOS / 2.0)
+#define SCALING 		(8.0)
+
+#define ROI_X			(350)
+#define ROI_Y			(300)
+#define ROI_END_X		(1280-450)
+#define ROI_END_Y		(720-230)
+
+#define WIDTH			(1280)
+#define HEIGHT			(720)
 
 #define PI (3.14159265359)
 
@@ -109,30 +121,26 @@
         }                                                                                       \
     }
 
-////////
-// User kernel should have a unique enumerations and name for user kernel:
-//   USER_LIBRARY_EXAMPLE      - library ID for user kernels in this example
-//   USER_KERNEL_MEDIAN_BLUR   - enumeration for "app.userkernels.median_blur" kernel
-//
-// TODO:********
-//   1. Define USER_LIBRARY_EXAMPLE
-//   2. Define USER_KERNEL_MEDIAN_BLUR using VX_KERNEL_BASE() macro
+
+/************************************
+ * Defining user library enumeration
+*************************************/
 enum user_library_e
 {
     USER_LIBRARY_EXAMPLE = 1,
 };
 enum user_kernel_e
 {
-    USER_KERNEL_HOUGH_TRANSFORM = VX_KERNEL_BASE(VX_ID_DEFAULT, USER_LIBRARY_EXAMPLE) + 0x001,
-    USER_KERNEL_COLORING = VX_KERNEL_BASE(VX_ID_DEFAULT, USER_LIBRARY_EXAMPLE) + 0x002,
+    USER_KERNEL_HOUGH_LINES     = VX_KERNEL_BASE(VX_ID_DEFAULT, USER_LIBRARY_EXAMPLE) + 0x001,
+    USER_KERNEL_DRAWING         = VX_KERNEL_BASE(VX_ID_DEFAULT, USER_LIBRARY_EXAMPLE) + 0x002,
 };
 
-vx_node userHoughTransformNode(vx_graph graph,
+vx_node userHoughLinesNode(vx_graph graph,
                                vx_image input,
                                vx_array rects)
 {
     vx_context context = vxGetContext((vx_reference)graph);
-    vx_kernel kernel = vxGetKernelByEnum(context, USER_KERNEL_HOUGH_TRANSFORM);
+    vx_kernel kernel = vxGetKernelByEnum(context, USER_KERNEL_HOUGH_LINES);
     ERROR_CHECK_OBJECT(kernel);
     vx_node node = vxCreateGenericNode(graph, kernel);
     ERROR_CHECK_OBJECT(node);
@@ -149,7 +157,7 @@ vx_node userHoughTransformNode(vx_graph graph,
 
     return node;
 }
-vx_status VX_CALLBACK hough_validator(vx_node node,
+vx_status VX_CALLBACK hough_lines_validator(vx_node node,
                                       const vx_reference parameters[], vx_uint32 num,
                                       vx_meta_format metas[])
 {
@@ -172,7 +180,7 @@ vx_status VX_CALLBACK hough_validator(vx_node node,
 }
 
 
-vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference *refs, vx_uint32 num)
+vx_status VX_CALLBACK hough_lines_host_side_function(vx_node node, const vx_reference *refs, vx_uint32 num)
 {
     vx_image input = (vx_image)refs[0];
     vx_array output_arr = (vx_array)refs[1];
@@ -195,11 +203,11 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
      * Making mask
      * ****************************************/
 
-    vx_rectangle_t line0 = {.start_x = 0, .start_y = width / 5, .end_x = height - 20, .end_y = 0};
+    vx_rectangle_t line0 = {.start_x = 0, .start_y = 2 * width / 5, .end_x = height - 20, .end_y = 0};
     vx_float64 k0 = ((vx_float64)line0.end_y - (vx_float64)line0.start_y) / ((vx_float64)line0.end_x - (vx_float64)line0.start_x);
     vx_float64 n0 = (vx_int32)line0.start_y - k0 * (vx_int32)line0.start_x;
 
-    vx_rectangle_t line1 = {.start_x = 0, .start_y = 4 * width / 5, .end_x = height - 20, .end_y = width};
+    vx_rectangle_t line1 = {.start_x = 0, .start_y = 3 * width / 5, .end_x = height - 20, .end_y = width};
     vx_float64 k1 = ((vx_float64)line1.end_y - (vx_float64)line1.start_y) / ((vx_float64)line1.end_x - (vx_float64)line1.start_x);
     vx_float64 n1 = (vx_int32)line1.start_y - k1 * (vx_int32)line1.start_x;
     vx_int32 curr_yy0;
@@ -236,9 +244,6 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
         }
     }
 
-    // Mat mat(height, width, CV_8UC1, ptr_input, addr_input.stride_y);
-    // imshow("edged",mat);
-
     /********************************************
      * Creating accumulator
      * ******************************************/
@@ -254,19 +259,6 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
     ERROR_CHECK_STATUS(vxMapImagePatch(accum, &rect_transformed, 0, &map_id,
                                        &addr, &base_ptr,
                                        VX_READ_AND_WRITE, VX_MEMORY_TYPE_HOST, 0));
-
-    // for (y = 0; y < addr.dim_y; y += addr.step_y)
-    // {
-    //     j = (addr.stride_y * y * addr.scale_y) / VX_SCALE_UNITY;
-    //     for (x = 0; x < addr.dim_x; x += addr.step_x)
-    //     {
-    //         vx_uint8 *tmp = (vx_uint8 *)base_ptr;
-    //         i = j + (addr.stride_x * x * addr.scale_x) /
-    //                     VX_SCALE_UNITY;
-    //         tmp[i] = 0;
-    //         tmp[i + 1] = 0;
-    //     }
-    // }
 
      for (vx_uint32 i = 0; i < addr.dim_x * addr.dim_y; i++)
     {
@@ -351,14 +343,14 @@ vx_status VX_CALLBACK hough_host_side_function(vx_node node, const vx_reference 
     return VX_SUCCESS;
 }
 
-vx_node userColorNode(vx_graph graph,
+vx_node userDrawingNode(vx_graph graph,
                       vx_image input,
                       vx_array rects,
                       vx_image output,
                       vx_rectangle_t roi)
 {
     vx_context context = vxGetContext((vx_reference)graph);
-    vx_kernel kernel = vxGetKernelByEnum(context, USER_KERNEL_COLORING);
+    vx_kernel kernel = vxGetKernelByEnum(context, USER_KERNEL_DRAWING);
     ERROR_CHECK_OBJECT(kernel);
     vx_node node = vxCreateGenericNode(graph, kernel);
     ERROR_CHECK_OBJECT(node);
@@ -377,7 +369,7 @@ vx_node userColorNode(vx_graph graph,
 
     return node;
 }
-vx_status VX_CALLBACK colorNodeValidator(vx_node node,
+vx_status VX_CALLBACK drawing_node_validator(vx_node node,
                                          const vx_reference parameters[], vx_uint32 num,
                                          vx_meta_format metas[])
 {
@@ -415,7 +407,7 @@ vx_status VX_CALLBACK colorNodeValidator(vx_node node,
     return VX_SUCCESS;
 }
 
-void move_diagonally(void *base_rgb, vx_imagepatch_addressing_t rgb_imgpatch, vx_uint32 width, vx_uint32 height, vx_int32 x0, vx_int32 y0, vx_int32 x1, vx_int32 y1)
+void draw_line(void *base_rgb, vx_imagepatch_addressing_t rgb_imgpatch, vx_uint32 width, vx_uint32 height, vx_int32 x0, vx_int32 y0, vx_int32 x1, vx_int32 y1)
 {
 
     vx_float64 k = ((vx_float64)y1 - (vx_float64)y0) / ((vx_float64)x1 - (vx_float64)x0);
@@ -427,7 +419,7 @@ void move_diagonally(void *base_rgb, vx_imagepatch_addressing_t rgb_imgpatch, vx
     vx_uint8 red = 255;
     vx_uint8 green = 0;
     vx_uint8 blue = 0;
-    for (y = 0; y < rgb_imgpatch.dim_y; y += rgb_imgpatch.step_y, curr_xx++)
+    for (y = rgb_imgpatch.step_y*x0; y < rgb_imgpatch.dim_y; y += rgb_imgpatch.step_y, curr_xx++)
     {
         j = (rgb_imgpatch.stride_y * y * rgb_imgpatch.scale_y) / VX_SCALE_UNITY;
         curr_yy = k * curr_xx + n;
@@ -445,7 +437,7 @@ void move_diagonally(void *base_rgb, vx_imagepatch_addressing_t rgb_imgpatch, vx
     }
 }
 
-vx_status VX_CALLBACK coloring_host_side_function(vx_node node, const vx_reference *refs, vx_uint32 num)
+vx_status VX_CALLBACK drawing_host_side_function(vx_node node, const vx_reference *refs, vx_uint32 num)
 {
     vx_image input_img = (vx_image)refs[0];
     vx_array coords_arr = (vx_array)refs[1];
@@ -497,7 +489,7 @@ vx_status VX_CALLBACK coloring_host_side_function(vx_node node, const vx_referen
         vxMapArrayRange(coords_arr, 0, num_items, &map_id, &stride, (void **)&coords, VX_READ_ONLY, VX_MEMORY_TYPE_HOST, 0);
         for (vx_uint32 i = 0; i < num_items; i++)
         {
-            vx_int32 x0 = 0, x1 = roi_height - 1, y0, y1;
+            vx_int32 x0 = 50, x1 = roi_height - 1, y0, y1;
             vx_coordinates2d_t p = coords[i];
             vx_float64 tann = tan(p.x * ((3.14) / (NUM_THETAS_LF)));
             vx_float64 shifted = (vx_int32)p.y - NUM_RHOS_HALF;
@@ -505,7 +497,7 @@ vx_status VX_CALLBACK coloring_host_side_function(vx_node node, const vx_referen
             y0 = x0 * tann + SCALING * (shifted / coss);
             y1 = x1 * tann + SCALING * (shifted / coss);
 
-            move_diagonally(cropped_ptr, cropped_imgpatch, roi_width, roi_height, x0, y0, x1, y1);
+            draw_line(cropped_ptr, cropped_imgpatch, roi_width, roi_height, x0, y0, x1, y1);
         }
         vxUnmapArrayRange(coords_arr, map_id);
         vxTruncateArray(coords_arr, 0);
@@ -555,11 +547,11 @@ vx_status VX_CALLBACK deinitialization(vx_node node, const vx_reference *paramet
 vx_status registerUserKernels(vx_context context)
 {
     vx_kernel kernel = vxAddUserKernel(context,
-                                       "app.userkernels.hough_transform",
-                                       USER_KERNEL_HOUGH_TRANSFORM,
-                                       hough_host_side_function,
+                                       "app.userkernels.hough_lines",
+                                       USER_KERNEL_HOUGH_LINES,
+                                       hough_lines_host_side_function,
                                        4, // numParams
-                                       hough_validator,
+                                       hough_lines_validator,
                                        initialization,
                                        deinitialization);
     ERROR_CHECK_OBJECT(kernel);
@@ -571,14 +563,14 @@ vx_status registerUserKernels(vx_context context)
     ERROR_CHECK_STATUS(vxFinalizeKernel(kernel));
     ERROR_CHECK_STATUS(vxReleaseKernel(&kernel));
 
-    vxAddLogEntry((vx_reference)context, VX_SUCCESS, "OK: registered user kernel app.userkernels.hough_transform\n");
+    vxAddLogEntry((vx_reference)context, VX_SUCCESS, "OK: registered user kernel app.userkernels.hough_lines\n");
 
     kernel = vxAddUserKernel(context,
-                             "app.userkernels.coloring",
-                             USER_KERNEL_COLORING,
-                             coloring_host_side_function,
+                             "app.userkernels.drawing",
+                             USER_KERNEL_DRAWING,
+                             drawing_host_side_function,
                              4, // numParams
-                             colorNodeValidator,
+                             drawing_node_validator,
                              NULL,
                              NULL);
     ERROR_CHECK_OBJECT(kernel);
@@ -640,8 +632,8 @@ int main(int argc, char *argv[])
     if (argc < 2)
     {
         printf("Usage:\n"
-               "./SegmentacijaSlike --image <imageName>\n"
-               "./cannyDetect --live \n");
+               "./lane_detection.out --image <path_to_image> (image needs to be of ppm format)\n"
+               "./lane_detection.out --video <path_to_video.bin> \n");
         return 0;
     }
 
@@ -658,18 +650,21 @@ int main(int argc, char *argv[])
     ERROR_CHECK_OBJECT(graph);
 
 
+    char* option = argv[1];
+    vx_image input_rgb_image;
     /**************************************
      * Reading image from file
      * ************************************/
-    char* option = argv[1];
-     vx_image input_rgb_image;
-     if (!strcmp(option,"--image"))
+    if (!strcmp(option,"--image"))
     {
         struct read_image_attributes attr;
         input_rgb_image = createImageFromFile(context, argv[2], &attr);
         width = attr.width;
         height = attr.height;
     }
+    /*****************************************
+     * Creating input image object for frames
+     * ***************************************/
     else if(!strcmp(option,"--video")){
         input_rgb_image = vxCreateImage(context, width, height, VX_DF_IMAGE_RGB);
     }
@@ -678,16 +673,16 @@ int main(int argc, char *argv[])
     ERROR_CHECK_OBJECT(output_filtered_image);
 
     /*****************************************
-     * Working ROI
-     * ***************************************
-     */
-    vx_rectangle_t roi_rect = {.start_x = 350, .start_y = 350, .end_x = width - 450, .end_y = height - 230};
-    // vx_rectangle_t roi_rect = {.start_x = 0, .start_y = 350, .end_x=width, .end_y=height};
+     * Creating ROI
+     * ***************************************/
+    vx_rectangle_t roi_rect = {.start_x = ROI_X, .start_y = ROI_Y, .end_x = ROI_END_X, .end_y = ROI_END_Y};
     vx_uint32 roi_width = roi_rect.end_x - roi_rect.start_x;
     vx_uint32 roi_height = roi_rect.end_y - roi_rect.start_y;
-
     /*****************************************/
-    // virtual images creation
+
+    /*****************************************
+    *   intermediate images creation
+    ******************************************/
     vx_image yuv_image = vxCreateImage(context, width, height, VX_DF_IMAGE_IYUV);
     vx_image luma_image = vxCreateImage(context, width, height, VX_DF_IMAGE_U8);
     vx_image gray_roi = vxCreateImageFromROI(luma_image, &roi_rect);
@@ -701,9 +696,14 @@ int main(int argc, char *argv[])
 
     ERROR_CHECK_OBJECT(yuv_image);
     ERROR_CHECK_OBJECT(luma_image);
+    ERROR_CHECK_OBJECT(gray_roi);
     ERROR_CHECK_OBJECT(edged_image);
-    // ERROR_CHECK_OBJECT(roied_image_roi);
+    /******************************************/
 
+
+    /******************************************
+     * Creating threshold object and array
+    *******************************************/
     vx_threshold hyst = vxCreateThreshold(context, VX_THRESHOLD_TYPE_RANGE, VX_TYPE_UINT8);
     vx_int32 lower = 180, upper = 200;
     vxSetThresholdAttribute(hyst, VX_THRESHOLD_ATTRIBUTE_THRESHOLD_LOWER, &lower, sizeof(lower));
@@ -711,9 +711,9 @@ int main(int argc, char *argv[])
     ERROR_CHECK_OBJECT(hyst);
     vx_int32 gradient_size = 3;
     vx_int32 maxcount = 2;
-    /*user*/
     vx_array lines_user = vxCreateArray(context, VX_TYPE_COORDINATES2D, maxcount);
-
+    ERROR_CHECK_OBJECT(lines_user);
+    /******************************************/
     vx_node nodes[] =
         {
             vxColorConvertNode(graph, input_rgb_image, yuv_image),
@@ -721,8 +721,8 @@ int main(int argc, char *argv[])
             vxGaussian3x3Node(graph, gray_roi, blured_image[0]),
             vxGaussian3x3Node(graph, blured_image[0], blured_image[1]),
             vxCannyEdgeDetectorNode(graph, blured_image[1], hyst, gradient_size, VX_NORM_L1, edged_image),
-            userHoughTransformNode(graph, edged_image, lines_user),
-            userColorNode(graph, input_rgb_image, lines_user, output_filtered_image, roi_rect)};
+            userHoughLinesNode(graph, edged_image, lines_user),
+            userDrawingNode(graph, input_rgb_image, lines_user, output_filtered_image, roi_rect)};
 
     for (vx_size i = 0; i < sizeof(nodes) / sizeof(nodes[0]); i++)
     {
@@ -734,7 +734,9 @@ int main(int argc, char *argv[])
     clock_t begin,end;
     double time_spent = 0.0;
 
-
+    /**************************************
+     * Processing parsed data
+    ***************************************/
     if (!strcmp(option,"--image"))
     {
         begin = clock();
@@ -746,12 +748,8 @@ int main(int argc, char *argv[])
         /*****************************************************
          * Writing image to file
          * ***************************************************/
-        printf("prije write_image\n");
-        //writeImage(luma_image,"/media/luma_image.ppm");
-        //writeImage(blured_image[1],"/media/blured_image[1].ppm");
-        writeImage(edged_image,"/media/edged_image.ppm");
         writeImage(output_filtered_image,"/media/finished.ppm");
-        /***********************************************************************/
+        /*****************************************************/
 
     }
     else if(!strcmp(option,"--video")){ 
@@ -759,7 +757,7 @@ int main(int argc, char *argv[])
         FILE* output_file = fopen("/media/output_video.bin","wb");
         if(!video_file || !output_file )
         {
-            printf("Neuspjesno otvaranje fajlova\n");
+            printf("Can't open files\n");
             appDeInit();
             return 0;
         }
@@ -768,13 +766,15 @@ int main(int argc, char *argv[])
         vx_imagepatch_addressing_t addr;
         void *in_ptr;
         ERROR_CHECK_STATUS(vxMapImagePatch(input_rgb_image,&in_rect,0,&in_map,&addr,&in_ptr,VX_WRITE_ONLY,VX_MEMORY_TYPE_HOST,VX_NOGAP_X));
-        vx_int32 count = 0;
         appPerfStatsResetAll();
+        /**********************************************
+         * While there is available frames
+         * Do the processing
+        ***********************************************/
         while(fread(in_ptr,1,width*height*3,video_file) == width*height*3){
             appPerfPointBegin(&performance);
             ERROR_CHECK_STATUS(vxUnmapImagePatch(input_rgb_image,in_map));
-
-            printf("FRAME count =%d\n",count++);
+            
             ERROR_CHECK_STATUS(vxProcessGraph(graph));
             appPerfPointEnd(&performance);
 
@@ -792,11 +792,17 @@ int main(int argc, char *argv[])
     appPerfPointPrintFPS(&performance);
     printf("FPS=%f\n",1.0/time_spent);
     
+    ERROR_CHECK_STATUS(vxReleaseThreshold(&hyst));
+    ERROR_CHECK_STATUS(vxReleaseArray(&lines_user));
     ERROR_CHECK_STATUS(vxReleaseImage(&output_filtered_image));
     ERROR_CHECK_STATUS(vxReleaseImage(&input_rgb_image));
-    ERROR_CHECK_STATUS(vxReleaseGraph(&graph));
     ERROR_CHECK_STATUS(vxReleaseImage(&yuv_image));
+    ERROR_CHECK_STATUS(vxReleaseImage(&gray_roi));
     ERROR_CHECK_STATUS(vxReleaseImage(&luma_image));
+    ERROR_CHECK_STATUS(vxReleaseImage(&edged_image));
+    ERROR_CHECK_STATUS(vxReleaseImage(&blured_image[0]));
+    ERROR_CHECK_STATUS(vxReleaseImage(&blured_image[1]));
+    ERROR_CHECK_STATUS(vxReleaseGraph(&graph));
     ERROR_CHECK_STATUS(vxReleaseContext(&context));
     
     if(status == 0)
